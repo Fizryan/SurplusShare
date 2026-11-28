@@ -84,9 +84,8 @@ void main() {
       'redirects authenticated user with feed permission from /login to /feed',
       (tester) async {
         final jwt = _jwt({'sub': 'u1', 'role': 'consumer'});
-        when(() => repository.signInWithGoogle()).thenAnswer(
-          (_) async => right(AuthTokens(accessToken: jwt, refreshToken: 'r')),
-        );
+        when(() => repository.signInWithGoogle())
+            .thenAnswer((_) async => right(AuthTokens(accessToken: jwt)));
 
         final container = ProviderContainer(
           overrides: [authRepositoryProvider.overrideWithValue(repository)],
@@ -117,9 +116,8 @@ void main() {
           'role': 'consumer',
           'revoked_permissions': ['browse_discount_listings'],
         });
-        when(() => repository.signInWithGoogle()).thenAnswer(
-          (_) async => right(AuthTokens(accessToken: jwt, refreshToken: 'r')),
-        );
+        when(() => repository.signInWithGoogle())
+            .thenAnswer((_) async => right(AuthTokens(accessToken: jwt)));
         when(() => repository.logout()).thenAnswer((_) async => right(unit));
 
         final container = ProviderContainer(

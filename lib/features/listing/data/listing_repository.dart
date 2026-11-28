@@ -36,6 +36,11 @@ abstract interface class ListingRepository {
   Future<Either<ListingFailure, SurplusListing>> closeListing({
     required String listingId,
   });
+
+  Future<Either<ListingFailure, SurplusListing>> allocateVolunteerPortions({
+    required String listingId,
+    required int portions,
+  });
 }
 
 class InMemoryListingRepository implements ListingRepository {
@@ -73,6 +78,7 @@ class InMemoryListingRepository implements ListingRepository {
       return left(ListingValidationFailure(error));
     }
 
+    final publicRemaining = input.quantity - input.volunteerAllocatedPortions;
     final listing = SurplusListing(
       id: _uuid.v4(),
       partnerId: input.partnerId.trim(),
@@ -84,9 +90,12 @@ class InMemoryListingRepository implements ListingRepository {
       originalPrice: input.originalPrice,
       discountedPrice: input.discountedPrice,
       totalQuantity: input.quantity,
-      remainingQuantity: input.quantity,
+      remainingQuantity: publicRemaining,
+      volunteerAllocatedPortions: input.volunteerAllocatedPortions,
       pickupWindow: input.pickupWindow,
-      status: ListingStatus.active,
+      status: publicRemaining == 0
+          ? ListingStatus.soldOut
+          : ListingStatus.active,
       createdAt: now,
       location: input.location,
       address: input.address?.trim(),
@@ -224,6 +233,53 @@ class InMemoryListingRepository implements ListingRepository {
     return right(updated);
   }
 
+  @override
+  Future<Either<ListingFailure, SurplusListing>> allocateVolunteerPortions({
+    required String listingId,
+    required int portions,
+  }) async {
+    if (portions <= 0) {
+      return left(
+        const ListingValidationFailure(
+          'Jumlah alokasi porsi relawan harus lebih dari 0.',
+        ),
+      );
+    }
+
+    _expireStaleListings();
+    final index = _items.indexWhere((item) => item.id == listingId);
+    if (index == -1) {
+      return left(const ListingNotFoundFailure());
+    }
+
+    final current = _items[index];
+    final now = _clock().toUtc();
+    if (current.effectiveStatus(now: now) == ListingStatus.expired) {
+      return left(const ListingExpiredFailure());
+    }
+    if (!current.isAvailable(now: now)) {
+      return left(
+        const InsufficientStockFailure('Listing sudah tidak tersedia.'),
+      );
+    }
+    if (portions > current.remainingQuantity) {
+      return left(
+        InsufficientStockFailure(
+          'Stok tersisa hanya ${current.remainingQuantity} porsi.',
+        ),
+      );
+    }
+
+    final remaining = current.remainingQuantity - portions;
+    final updated = current.copyWith(
+      remainingQuantity: remaining,
+      volunteerAllocatedPortions: current.volunteerAllocatedPortions + portions,
+      status: remaining == 0 ? ListingStatus.soldOut : ListingStatus.active,
+    );
+    _items[index] = updated;
+    return right(updated);
+  }
+
   void _expireStaleListings() {
     final now = _clock().toUtc();
     for (var i = 0; i < _items.length; i++) {
@@ -304,8 +360,9 @@ class InMemoryListingRepository implements ListingRepository {
         channel: ListingChannel.donation,
         originalPrice: 40000,
         discountedPrice: 0,
-        totalQuantity: 15,
+        totalQuantity: 20,
         remainingQuantity: 15,
+        volunteerAllocatedPortions: 5,
         pickupWindow: window,
         status: ListingStatus.active,
         createdAt: now,

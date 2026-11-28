@@ -1,6 +1,5 @@
 abstract final class ApiEndpoints {
   static const googleAuth = '/auth/google';
-  static const refresh = '/auth/refresh';
   static const logout = '/auth/logout';
 
   static const listings = '/listings';
@@ -9,6 +8,17 @@ abstract final class ApiEndpoints {
   static String claimListingStock(String id) => '/listings/$id/claim';
   static String releaseListingStock(String id) => '/listings/$id/release';
   static String closeListing(String id) => '/listings/$id/close';
+  static String allocateListingVolunteer(String id) =>
+      '/listings/$id/allocate-volunteer';
+
+  static const myPinnedLocation = '/locations/pinned/me';
+  static const verifiedRecipientLocations = '/locations/recipients';
+
+  static const distributions = '/distributions';
+  static String acceptDistribution(String id) => '/distributions/$id/accept';
+  static String pickupDistribution(String id) => '/distributions/$id/pickup';
+  static String deliverDistribution(String id) => '/distributions/$id/deliver';
+  static String cancelDistribution(String id) => '/distributions/$id/cancel';
 
   static const myKyc = '/kyc/me';
   static const uploadKycDocument = '/kyc/documents';

@@ -16,6 +16,7 @@ import 'package:surplus_share/core/theme/theme_state.dart';
 import 'package:surplus_share/core/time/clock_provider.dart';
 import 'package:surplus_share/features/impact/presentation/provider/impact_provider.dart';
 import 'package:surplus_share/features/impact/presentation/screens/impact_profile_screen.dart';
+import 'package:surplus_share/features/kyc/presentation/provider/kyc_provider.dart';
 import 'package:surplus_share/features/listing/domain/models/listing_channel.dart';
 import 'package:surplus_share/features/listing/presentation/provider/listing_provider.dart';
 import 'package:surplus_share/features/listing/presentation/screens/feed_screen.dart';
@@ -28,6 +29,7 @@ import 'package:surplus_share/features/location/presentation/screens/explore_scr
 import 'package:surplus_share/features/reservation/domain/models/reservation_status.dart';
 import 'package:surplus_share/features/reservation/presentation/provider/reservation_provider.dart';
 import 'package:surplus_share/features/reservation/presentation/screens/reservations_screen.dart';
+import 'package:surplus_share/features/reservation/presentation/widgets/book_listing_sheet.dart';
 
 class _InMemoryTokenStorage implements TokenStorage {
   AuthTokens? _tokens;
@@ -37,9 +39,6 @@ class _InMemoryTokenStorage implements TokenStorage {
 
   @override
   Future<String?> getAccessToken() async => _tokens?.accessToken;
-
-  @override
-  Future<String?> getRefreshToken() async => _tokens?.refreshToken;
 
   @override
   Future<AuthTokens?> getTokens() async => _tokens;
@@ -361,6 +360,50 @@ void main() {
         await tester.tap(find.byKey(const Key('bottom_sheet_close_button')));
         await tester.pumpAndSettle();
         expect(find.byType(CreateListingSheet), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'BookListingSheet lets verifiedRecipient claim multiple donation '
+      'portions via quick-pick chip',
+      (tester) async {
+        final container = _makeContainer(now);
+        addTearDown(container.dispose);
+
+        await container
+            .read(authNotifierProvider.notifier)
+            .signInWithGoogle(
+              debugAccountId: DummyAuthAccounts.verifiedRecipient.id,
+            );
+        await container.read(listingNotifierProvider.notifier).loadListings();
+        await container.read(kycNotifierProvider.notifier).loadMyKyc();
+
+        final donation = container
+            .read(listingNotifierProvider)
+            .items
+            .firstWhere((e) => e.id == 'lst-donation-1');
+
+        await tester.pumpWidget(
+          _wrapScreen(
+            container,
+            Scaffold(body: BookListingSheet(listing: donation)),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('book_qty_chip_10')), findsOneWidget);
+        await tester.tap(find.byKey(const Key('book_qty_chip_10')));
+        await tester.pump();
+        expect(find.text('Klaim 10 Porsi Gratis'), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('book_listing_confirm_button')));
+        await tester.pumpAndSettle();
+
+        final updated = container
+            .read(listingNotifierProvider)
+            .items
+            .firstWhere((e) => e.id == 'lst-donation-1');
+        expect(updated.remainingQuantity, donation.remainingQuantity - 10);
       },
     );
   });

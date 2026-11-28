@@ -13,39 +13,30 @@ String _encodeJwt(Map<String, dynamic> payload) {
 }
 
 void main() {
-  group('AuthTokens', () {
-    test('parses wrapped data with snake_case keys', () {
-      final tokens = AuthTokens.fromJson(const {
-        'data': {'access_token': 'access-123', 'refresh_token': 'refresh-456'},
+  group('AuthTokens (Single Session Token)', () {
+    test('parses wrapped data with session_token and access_token keys', () {
+      final session = AuthTokens.fromJson(const {
+        'data': {'session_token': 'session-123'},
+      });
+      final access = AuthTokens.fromJson(const {
+        'data': {'access_token': 'access-123'},
       });
 
-      expect(tokens.accessToken, 'access-123');
-      expect(tokens.refreshToken, 'refresh-456');
+      expect(session.accessToken, 'session-123');
+      expect(access.accessToken, 'access-123');
     });
 
-    test('parses wrapped data with camelCase keys', () {
-      final tokens = AuthTokens.fromJson(const {
-        'data': {
-          'accessToken': 'access-camel',
-          'refreshToken': 'refresh-camel',
-        },
+    test('parses wrapped data with camelCase and flat payload fallback', () {
+      final camel = AuthTokens.fromJson(const {
+        'data': {'accessToken': 'access-camel'},
       });
+      final flat = AuthTokens.fromJson(const {'token': 'flat-token'});
 
-      expect(tokens.accessToken, 'access-camel');
-      expect(tokens.refreshToken, 'refresh-camel');
+      expect(camel.accessToken, 'access-camel');
+      expect(flat.accessToken, 'flat-token');
     });
 
-    test('parses flat payload as fallback', () {
-      final tokens = AuthTokens.fromJson(const {
-        'accessToken': 'flat-access',
-        'refresh_token': 'flat-refresh',
-      });
-
-      expect(tokens.accessToken, 'flat-access');
-      expect(tokens.refreshToken, 'flat-refresh');
-    });
-
-    test('throws FormatException when tokens are missing or empty', () {
+    test('throws FormatException when session token is missing or empty', () {
       expect(
         () => AuthTokens.fromJson(const {
           'data': {'access_token': ''},
@@ -53,22 +44,16 @@ void main() {
         throwsFormatException,
       );
       expect(
-        () => AuthTokens.fromJson(const {
-          'data': {'access_token': 'ok'},
-        }),
+        () => AuthTokens.fromJson(const <String, dynamic>{}),
         throwsFormatException,
       );
     });
 
-    test('redacts tokens in toString', () {
-      const tokens = AuthTokens(
-        accessToken: 'super-secret-access',
-        refreshToken: 'super-secret-refresh',
-      );
+    test('redacts token in toString', () {
+      const tokens = AuthTokens(accessToken: 'super-secret-session');
 
       final text = tokens.toString();
-      expect(text, isNot(contains('super-secret-access')));
-      expect(text, isNot(contains('super-secret-refresh')));
+      expect(text, isNot(contains('super-secret-session')));
       expect(text, contains('REDACTED'));
     });
   });

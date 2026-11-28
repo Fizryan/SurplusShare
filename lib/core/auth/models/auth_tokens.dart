@@ -1,33 +1,28 @@
 import 'package:flutter/foundation.dart';
 
+/// Single session token issued by backend after Google OAuth sign-in.
 @immutable
 class AuthTokens {
-  const new({required this.accessToken, required this.refreshToken});
+  const new({required this.accessToken});
 
   factory fromJson(Map<String, dynamic> json) {
     final payload = _extractPayload(json);
-    final rawAccess = payload['access_token'] ?? payload['accessToken'];
-    final rawRefresh = payload['refresh_token'] ?? payload['refreshToken'];
+    final rawAccess =
+        payload['session_token'] ??
+        payload['access_token'] ??
+        payload['accessToken'] ??
+        payload['token'];
 
     if (rawAccess is! String || rawAccess.trim().isEmpty) {
       throw const FormatException(
-        'Missing or invalid accessToken in auth response.',
-      );
-    }
-    if (rawRefresh is! String || rawRefresh.trim().isEmpty) {
-      throw const FormatException(
-        'Missing or invalid refreshToken in auth response.',
+        'Missing or invalid session token in auth response.',
       );
     }
 
-    return AuthTokens(
-      accessToken: rawAccess.trim(),
-      refreshToken: rawRefresh.trim(),
-    );
+    return AuthTokens(accessToken: rawAccess.trim());
   }
 
   final String accessToken;
-  final String refreshToken;
 
   static Map<String, dynamic> _extractPayload(Map<String, dynamic> json) {
     final data = json['data'];
@@ -40,23 +35,17 @@ class AuthTokens {
     return json;
   }
 
-  Map<String, dynamic> toJson() => {
-    'access_token': accessToken,
-    'refresh_token': refreshToken,
-  };
+  Map<String, dynamic> toJson() => {'access_token': accessToken};
 
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
-    return other is AuthTokens &&
-        other.accessToken == accessToken &&
-        other.refreshToken == refreshToken;
+    return other is AuthTokens && other.accessToken == accessToken;
   }
 
   @override
-  int get hashCode => Object.hash(accessToken, refreshToken);
+  int get hashCode => accessToken.hashCode;
 
   @override
-  String toString() =>
-      'AuthTokens(accessToken: [REDACTED], refreshToken: [REDACTED])';
+  String toString() => 'AuthTokens(accessToken: [REDACTED])';
 }

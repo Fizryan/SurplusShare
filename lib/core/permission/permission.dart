@@ -6,5 +6,6 @@ enum Permission {
   manageListing,
   validatePickupPin,
   exportCsrReport,
+  manageDistribution,
   reviewKyc,
 }

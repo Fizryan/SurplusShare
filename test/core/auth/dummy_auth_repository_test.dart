@@ -1,36 +1,17 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:surplus_share/core/auth/dummy/dummy_auth_repository.dart';
 import 'package:surplus_share/core/auth/models/auth_failure.dart';
-import 'package:surplus_share/core/auth/models/auth_tokens.dart';
 import 'package:surplus_share/core/auth/models/jwt_claims.dart';
-import 'package:surplus_share/core/auth/storage/token_storage.dart';
 import 'package:surplus_share/core/permission/app_role.dart';
 
-class _InMemoryTokenStorage implements TokenStorage {
-  AuthTokens? _tokens;
-
-  @override
-  Future<void> clearTokens() async => _tokens = null;
-
-  @override
-  Future<String?> getAccessToken() async => _tokens?.accessToken;
-
-  @override
-  Future<String?> getRefreshToken() async => _tokens?.refreshToken;
-
-  @override
-  Future<AuthTokens?> getTokens() async => _tokens;
-
-  @override
-  Future<void> saveTokens(AuthTokens tokens) async => _tokens = tokens;
-}
+import '../../helpers/in_memory_token_storage.dart';
 
 void main() {
-  late _InMemoryTokenStorage storage;
+  late InMemoryTokenStorage storage;
   late DummyAuthRepository repository;
 
   setUp(() {
-    storage = _InMemoryTokenStorage();
+    storage = InMemoryTokenStorage();
     repository = DummyAuthRepository(tokenStorage: storage);
   });
 
@@ -84,13 +65,10 @@ void main() {
       },
     );
 
-    test('refreshTokens and logout update token storage cleanly', () async {
+    test('logout clears token storage cleanly', () async {
       await repository.signInWithGoogle(
         debugAccountId: DummyAuthAccounts.donorPartner.id,
       );
-
-      final refreshed = await repository.refreshTokens();
-      expect(refreshed.isRight(), isTrue);
 
       final logoutResult = await repository.logout();
       expect(logoutResult.isRight(), isTrue);

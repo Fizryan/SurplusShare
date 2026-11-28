@@ -20,13 +20,31 @@ abstract final class ListingAccessPolicy {
     Iterable<SurplusListing> listings,
     Set<Permission> permissions, {
     ListingChannel? channelFilter,
+    String? currentUserId,
+    AppRole? role,
   }) {
     return listings
         .where((listing) {
           if (channelFilter != null && listing.channel != channelFilter) {
             return false;
           }
-          return canView(listing, permissions);
+          if (canClaimChannel(
+            listing,
+            permissions,
+            currentUserId: currentUserId,
+          )) {
+            return true;
+          }
+          if (role != null &&
+              canManage(
+                listing,
+                currentUserId: currentUserId,
+                role: role,
+                permissions: permissions,
+              )) {
+            return true;
+          }
+          return false;
         })
         .toList(growable: false);
   }
@@ -46,12 +64,16 @@ abstract final class ListingAccessPolicy {
     return currentUserId != null && listing.partnerId == currentUserId;
   }
 
-  static bool canClaim(
+  /// Checks whether the actor has permission to book/claim [listing]'s channel
+  /// and is not the owning partner trying to book their own stock.
+  static bool canClaimChannel(
     SurplusListing listing,
     Set<Permission> permissions, {
-    DateTime? now,
+    String? currentUserId,
   }) {
-    if (!listing.isAvailable(now: now)) return false;
+    if (currentUserId != null && listing.partnerId == currentUserId) {
+      return false;
+    }
     return switch (listing.channel) {
       ListingChannel.discount => permissions.contains(
         Permission.browseDiscountListings,
@@ -60,5 +82,15 @@ abstract final class ListingAccessPolicy {
         Permission.claimDonationListings,
       ),
     };
+  }
+
+  static bool canClaim(
+    SurplusListing listing,
+    Set<Permission> permissions, {
+    DateTime? now,
+    String? currentUserId,
+  }) {
+    if (!listing.isAvailable(now: now)) return false;
+    return canClaimChannel(listing, permissions, currentUserId: currentUserId);
   }
 }

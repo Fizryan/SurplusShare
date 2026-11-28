@@ -14,22 +14,24 @@ import 'package:surplus_share/features/reservation/presentation/provider/reserva
 class ListingCard extends StatelessWidget {
   const new({
     required this.listing,
-    required this.onAction,
+    this.onAction,
     this.distanceLabel,
     this.isFavoritePartner = false,
     this.onToggleFavorite,
     this.canConvertToDonation = false,
     this.onConvertToDonation,
+    this.onAllocateVolunteer,
     super.key,
   });
 
   final SurplusListing listing;
-  final VoidCallback onAction;
+  final VoidCallback? onAction;
   final String? distanceLabel;
   final bool isFavoritePartner;
   final VoidCallback? onToggleFavorite;
   final bool canConvertToDonation;
   final VoidCallback? onConvertToDonation;
+  final VoidCallback? onAllocateVolunteer;
 
   @override
   Widget build(BuildContext context) {
@@ -60,6 +62,12 @@ class ListingCard extends StatelessWidget {
                   label: distanceLabel!,
                   icon: Icons.near_me_outlined,
                 ),
+              if (listing.volunteerAllocatedPortions > 0)
+                AppStatusChip(
+                  label: '${listing.volunteerAllocatedPortions} porsi relawan',
+                  icon: Icons.local_shipping_outlined,
+                  tone: AppChipTone.secondary,
+                ),
               _ListingCountdownChip(listingId: listing.id),
             ],
           ),
@@ -85,6 +93,30 @@ class ListingCard extends StatelessWidget {
                         color: colorScheme.onSurfaceVariant,
                       ),
                     ),
+                    if (listing.address != null &&
+                        listing.address!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.location_on_outlined,
+                            size: 13,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 2),
+                          Expanded(
+                            child: Text(
+                              listing.address!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: textTheme.labelSmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -171,6 +203,7 @@ class ListingCard extends StatelessWidget {
                 isDonation: isDonation,
                 canConvertToDonation: canConvertToDonation,
                 onConvertToDonation: onConvertToDonation,
+                onAllocateVolunteer: onAllocateVolunteer,
                 onAction: onAction,
               ),
             ],
@@ -233,13 +266,15 @@ class _ListingActionButtons extends ConsumerWidget {
     required this.isDonation,
     required this.canConvertToDonation,
     required this.onConvertToDonation,
+    required this.onAllocateVolunteer,
     required this.onAction,
   });
 
   final bool isDonation;
   final bool canConvertToDonation;
   final VoidCallback? onConvertToDonation;
-  final VoidCallback onAction;
+  final VoidCallback? onAllocateVolunteer;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -251,6 +286,14 @@ class _ListingActionButtons extends ConsumerWidget {
       spacing: AppSpacing.sm,
       runSpacing: AppSpacing.xs,
       children: [
+        if (onAllocateVolunteer != null)
+          OutlinedButton(
+            onPressed: isBusy ? null : onAllocateVolunteer,
+            style: OutlinedButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+            ),
+            child: const Text('Alokasi Relawan'),
+          ),
         if (canConvertToDonation && onConvertToDonation != null)
           OutlinedButton(
             onPressed: isBusy ? null : onConvertToDonation,
@@ -259,11 +302,12 @@ class _ListingActionButtons extends ConsumerWidget {
             ),
             child: const Text('Ke Donasi'),
           ),
-        FilledButton(
-          onPressed: isBusy ? null : onAction,
-          style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
-          child: Text(isDonation ? 'Klaim' : 'Pesan'),
-        ),
+        if (onAction != null)
+          FilledButton(
+            onPressed: isBusy ? null : onAction,
+            style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+            child: Text(isDonation ? 'Klaim' : 'Pesan'),
+          ),
       ],
     );
   }

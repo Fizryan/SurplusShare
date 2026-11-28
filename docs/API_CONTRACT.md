@@ -30,7 +30,7 @@ Dokumen ini menjadi **Single Source of Truth (SSOT)** antara aplikasi Flutter (`
     "message": "Stok makanan tidak mencukupi."
   }
   ```
-  - `401 Unauthorized`: Access token kedaluwarsa/tidak valid → aplikasi otomatis memanggil `POST /auth/refresh` lalu mengulang request 1x.
+  - `401 Unauthorized`: Session token kedaluwarsa/tidak valid → aplikasi otomatis membersihkan sesi lokal dan mengarahkan pengguna login ulang via Google.
   - `403 Forbidden`: Role / KYC / permission tidak mencukupi.
   - `404 Not Found`: Resource tidak ditemukan.
   - `409 Conflict`: Konflik stok / pengajuan KYC duplikat.
@@ -41,7 +41,7 @@ Dokumen ini menjadi **Single Source of Truth (SSOT)** antara aplikasi Flutter (`
 
 ## 2. JWT Claims & Matriks RBAC
 
-Access Token JWT yang diterbitkan oleh `/auth/google` dan `/auth/refresh` **wajib** memuat payload berikut:
+Session Token JWT yang diterbitkan oleh `/auth/google` **wajib** memuat payload berikut:
 
 ```json
 {
@@ -58,35 +58,37 @@ Access Token JWT yang diterbitkan oleh `/auth/google` dan `/auth/refresh` **waji
 ```
 
 ### Enum `role` & `kyc_status`
-- `role`: `consumer` | `verifiedRecipient` | `donorPartner` | `partnerStaff` | `admin`
+- `role`: `consumer` | `verifiedRecipient` | `donorPartner` | `volunteer` | `admin`
 - `kyc_status`: `unverified` | `pending` | `approved` | `rejected`
 
 ### Matriks Permission Default per Role
 
-> **Catatan KYC Gate**: Role `verifiedRecipient`, `donorPartner`, dan `partnerStaff` hanya memperoleh permission di bawah saat `kyc_status == "approved"`. Jika belum `approved`, permission turun ke default `consumer` (`browseDiscountListings`).
+> **Catatan KYC Gate**: Role `verifiedRecipient`, `donorPartner`, dan `volunteer` hanya memperoleh permission di bawah saat `kyc_status == "approved"`. Jika belum `approved`, permission turun ke default `consumer` (`browseDiscountListings`).
 
-| Permission | `consumer` | `verifiedRecipient` (KYC `approved`) | `donorPartner` (KYC `approved`) | `partnerStaff` (KYC `approved`) | `admin` |
+| Permission | `consumer` | `verifiedRecipient` (KYC `approved`) | `donorPartner` (KYC `approved`) | `volunteer` (KYC `approved`) | `admin` |
 |---|:---:|:---:|:---:|:---:|:---:|
 | `browseDiscountListings` | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `browseDonationListings` | ❌ | ✅ | ❌ | ❌ | ✅ |
 | `claimDonationListings` | ❌ | ✅ | ❌ | ❌ | ✅ |
-| `createListing` | ❌ | ❌ | ✅ | ✅ | ✅ |
-| `manageListing` | ❌ | ❌ | ✅ | ✅ | ✅ |
-| `validatePickupPin` | ❌ | ❌ | ✅ | ✅ | ✅ |
-| `exportCsrReport` | ❌ | ❌ | ✅ | ✅ | ✅ |
+| `createListing` | ❌ | ❌ | ✅ | ❌ | ✅ |
+| `manageListing` | ❌ | ❌ | ✅ | ❌ | ✅ |
+| `validatePickupPin` | ❌ | ❌ | ✅ | ❌ | ✅ |
+| `exportCsrReport` | ❌ | ❌ | ✅ | ❌ | ✅ |
+| `manageDistribution` | ❌ | ❌ | ❌ | ✅ | ✅ |
 | `reviewKyc` | ❌ | ❌ | ❌ | ❌ | ✅ |
 
 ---
 
-## 3. Auth Endpoints (Google OAuth + JWT)
+## 3. Auth Endpoints (Google OAuth + Single Session Token)
 
 ### 3.1 `POST /auth/google` *(Public)*
-Menukar Google ID Token (dari `google_sign_in`) menjadi pasangan JWT aplikasi. Jika email belum terdaftar, backend otomatis membuat akun baru dengan role `consumer` & `kyc_status: unverified`.
+Menukar Google ID Token (dari `google_sign_in`) menjadi satu **session token JWT** aplikasi (tanpa refresh token). Jika email belum terdaftar, backend otomatis membuat akun baru dengan role `consumer` & `kyc_status: unverified`.
 
 - **Request**:
   ```json
   {
     "id_token": "<google_id_token>",
+    "google_id": "109876543210987654321",
     "email": "budi@gmail.com",
     "name": "Budi Santoso",
     "picture": "https://lh3.googleusercontent.com/..."
@@ -96,21 +98,14 @@ Menukar Google ID Token (dari `google_sign_in`) menjadi pasangan JWT aplikasi. J
   ```json
   {
     "data": {
-      "access_token": "<jwt>",
-      "refresh_token": "<opaque_or_jwt_refresh>"
+      "access_token": "<jwt_session_token>"
     }
   }
   ```
+  *(Catatan: klien juga menerima nama field `session_token`, `accessToken`, atau `token` di dalam `data`.)*
 
-### 3.2 `POST /auth/refresh` *(Public)*
-Memperbarui access token yang mendekati/melewati `exp`.
-- **Request**: `{ "refresh_token": "<refresh_token>" }`
-- **Response `200 OK`**: `{ "data": { "access_token": "...", "refresh_token": "..." } }`
-- **Error `401`**: Refresh token kedaluwarsa / dicabut (aplikasi otomatis logout).
-
-### 3.3 `POST /auth/logout` *(Public / Best-effort)*
-Mencabut refresh token aktif di server.
-- **Request**: `{ "refresh_token": "<refresh_token>" }`
+### 3.2 `POST /auth/logout` *(Authenticated / Best-effort)*
+Mencabut session token aktif di server menggunakan header `Authorization: Bearer <access_token>`.
 - **Response `204 No Content`** atau `200 OK`.
 
 ---
@@ -131,6 +126,7 @@ Mencabut refresh token aktif di server.
   "discounted_price": 22500,
   "total_quantity": 10,
   "remaining_quantity": 8,
+  "volunteer_allocated_portions": 2,
   "pickup_window": {
     "start": "2026-11-28T11:00:00Z",
     "end": "2026-11-28T13:00:00Z"
@@ -175,6 +171,7 @@ Mencabut refresh token aktif di server.
     "original_price": 50000,
     "discounted_price": 25000,
     "quantity": 5,
+    "volunteer_allocated_portions": 2,
     "pickup_start": "2026-11-28T11:15:00Z",
     "pickup_end": "2026-11-28T13:15:00Z",
     "address": "Jl. M.H. Thamrin No. 12, Jakarta Pusat",
@@ -188,7 +185,7 @@ Mencabut refresh token aktif di server.
     }
   }
   ```
-- **Validasi Server**: Durasi pickup 15 menit – 24 jam, diskon 10%–90% untuk `discount`, `discounted_price == 0` untuk `donation`, `safe_until` maksimal +72 jam setelah `pickup_end`, `hygiene_confirmed == true`.
+- **Validasi Server**: Durasi pickup 15 menit – 24 jam, diskon 10%–90% & `original_price > 0` untuk `discount`, `original_price >= 0` (boleh `0`), `discounted_price == 0` & `discount_format == null` untuk `donation` (langsung terbit tanpa perlu format Flash Sale / Surprise Bag), `safe_until` maksimal +72 jam setelah `pickup_end`, `hygiene_confirmed == true`.
 - **Response `201 Created`**: `{ "data": SurplusListing }`
 
 ### 4.3 `POST /listings/{id}/convert-donation` *(Auth: `manageListing`, owner/admin)*
@@ -206,6 +203,74 @@ Mengalihkan listing `discount` aktif menjadi `donation` (`discounted_price: 0`, 
 
 ### 4.6 `POST /listings/{id}/close` *(Auth: `manageListing`, owner/admin)*
 - **Response `200 OK`**: `{ "data": SurplusListing }`
+
+### 4.7 `POST /listings/{id}/allocate-volunteer` *(Auth: `manageListing`, owner/admin)*
+Menyisihkan sebagian `remaining_quantity` untuk diantar oleh `volunteer` ke `verifiedRecipient`.
+- **Request**: `{ "portions": 2 }`
+- **Response `200 OK`**: `{ "data": SurplusListing }` (`remaining_quantity` berkurang, `volunteer_allocated_portions` bertambah).
+- **Error `409`**: `{ "code": "INSUFFICIENT_STOCK", "message": "..." }`
+
+---
+
+## 4B. Titik Lokasi Tetap (`PinnedLocation`) & Distribusi Relawan (`DistributionTask`)
+
+### Schema `PinnedLocation`
+Digunakan untuk mengunci koordinat toko `donorPartner` (titik pickup) dan koordinat panti/komunitas `verifiedRecipient` (titik drop-off) agar tidak berubah mengikuti GPS perangkat.
+
+```json
+{
+  "owner_id": "usr-partner-1",
+  "owner_role": "donorPartner",
+  "place_name": "Resto Nusantara",
+  "address": "Jl. Sudirman No. 10, Jakarta Pusat",
+  "point": { "latitude": -6.2088, "longitude": 106.8456 },
+  "updated_at": "2026-11-28T10:30:00Z"
+}
+```
+
+| Method & Path | Auth / Role | Request Body | Response `200` |
+|---|---|---|---|
+| `GET /locations/pinned/me` | `donorPartner` / `verifiedRecipient` / `admin` | — | `{ "data": PinnedLocation \| null }` (atau `404`) |
+| `PUT /locations/pinned/me` | `donorPartner` / `verifiedRecipient` / `admin` | `{ "place_name": "...", "address": "...", "point": { "latitude": -6.2088, "longitude": 106.8456 } }` | `{ "data": PinnedLocation }` |
+| `GET /locations/recipients` | Authenticated | — | `{ "data": [ PinnedLocation ] }` (daftar `verifiedRecipient` yang sudah menandai titik peta) |
+
+### Schema `DistributionTask`
+```json
+{
+  "id": "dist-001",
+  "listing_id": "lst-donation-1",
+  "listing_title": "Donasi Kotak Makan Malam",
+  "partner_id": "usr-partner-1",
+  "partner_name": "Resto Nusantara",
+  "store_address": "Jl. Sudirman No. 10, Jakarta Pusat",
+  "store_location": { "latitude": -6.2088, "longitude": 106.8456 },
+  "recipient_id": "usr-recipient-1",
+  "recipient_name": "Panti Asuhan Harapan",
+  "recipient_address": "Jl. Tebet Timur Dalam No. 18, Jakarta Selatan",
+  "recipient_location": { "latitude": -6.2297, "longitude": 106.8570 },
+  "portions": 5,
+  "status": "open",
+  "created_at": "2026-11-28T10:30:00Z",
+  "volunteer_id": null,
+  "volunteer_name": null,
+  "pickup_pin": "482910",
+  "delivery_pin": "739104",
+  "failed_pin_attempts": 0,
+  "accepted_at": null,
+  "picked_up_at": null,
+  "delivered_at": null
+}
+```
+- `status`: `open` | `accepted` | `pickedUp` | `delivered` | `cancelled`
+
+| Method & Path | Auth / Permission | Request Body | Response & Aturan Bisnis |
+|---|---|---|---|
+| `GET /distributions` | Authenticated | — | `{ "data": [ DistributionTask ] }` |
+| `POST /distributions` | `manageListing` | `listing_id`, `listing_title`, `partner_id`, `partner_name`, `store_address`, `store_location`, `recipient_id`, `recipient_name`, `recipient_address`, `recipient_location`, `portions` | `201`: `{ "data": DistributionTask }` (`status: open`) |
+| `POST /distributions/{id}/accept` | `manageDistribution` (`volunteer` KYC `approved` / `admin`) | — | `200`: `{ "data": DistributionTask }` (`open -> accepted`, mengikat `volunteer_id`, menerbitkan `pickup_pin` & `delivery_pin` 6 digit) |
+| `POST /distributions/{id}/pickup` | `manageDistribution` (assigned volunteer) | `{ "pin": "482910" }` | `200`: `{ "data": DistributionTask }` (validasi `pickup_pin` dari mitra toko; `accepted -> pickedUp`). Salah PIN: `422` `INVALID_PIN` (`remaining_attempts`); salah 5x: `423` `PIN_LOCKED`. |
+| `POST /distributions/{id}/deliver` | `manageDistribution` (assigned volunteer) | `{ "pin": "739104" }` | `200`: `{ "data": DistributionTask }` (validasi `delivery_pin` dari panti/penerima; `pickedUp -> delivered`). Salah PIN: `422` `INVALID_PIN`; salah 5x: `423` `PIN_LOCKED`. |
+| `POST /distributions/{id}/cancel` | Owner `donorPartner` / `admin` | — | `200`: `{ "data": DistributionTask }` (hanya sebelum `pickedUp`; `open/accepted -> cancelled`, mengembalikan stok ke listing). Error `409` `INVALID_DISTRIBUTION_TRANSITION` / `404` `DISTRIBUTION_NOT_FOUND`. |
 
 ---
 

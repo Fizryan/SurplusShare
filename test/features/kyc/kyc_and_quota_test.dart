@@ -24,9 +24,6 @@ class _InMemoryTokenStorage implements TokenStorage {
   Future<String?> getAccessToken() async => _tokens?.accessToken;
 
   @override
-  Future<String?> getRefreshToken() async => _tokens?.refreshToken;
-
-  @override
   Future<AuthTokens?> getTokens() async => _tokens;
 
   @override

@@ -17,6 +17,8 @@ import 'package:surplus_share/features/kyc/domain/models/kyc_application.dart';
 import 'package:surplus_share/features/kyc/domain/policy/kyc_quota_policy.dart';
 import 'package:surplus_share/features/kyc/presentation/provider/kyc_provider.dart';
 import 'package:surplus_share/features/kyc/presentation/widgets/submit_kyc_sheet.dart';
+import 'package:surplus_share/features/location/presentation/provider/pinned_location_provider.dart';
+import 'package:surplus_share/features/location/presentation/widgets/pinned_location_picker_sheet.dart';
 
 class ImpactProfileScreen extends ConsumerStatefulWidget {
   const new({super.key});
@@ -94,36 +96,41 @@ class _ImpactProfileScreenState extends ConsumerState<ImpactProfileScreen> {
     String applicationId,
   ) async {
     final controller = TextEditingController();
-    final reason = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Tolak Pengajuan KYC'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Alasan Penolakan',
-            hintText: 'Mis. Dokumen legalitas belum jelas',
+    String? reason;
+    try {
+      reason = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Tolak Pengajuan KYC'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              labelText: 'Alasan Penolakan',
+              hintText: 'Mis. Dokumen legalitas belum jelas',
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(controller.text.trim()),
+              child: const Text('Tolak'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Batal'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.of(dialogContext).pop(controller.text.trim()),
-            child: const Text('Tolak'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (reason == null || reason.isEmpty) return;
+      );
+    } finally {
+      controller.dispose();
+    }
+    if (!mounted || reason == null || reason.isEmpty) return;
 
     final ok = await ref
         .read(kycNotifierProvider.notifier)
         .rejectKyc(applicationId: applicationId, reason: reason);
+    if (!mounted) return;
     final snack = ref.read(snackbarServiceProvider);
     if (ok) {
       snack.showInfo('Pengajuan KYC ditolak.');
@@ -146,9 +153,13 @@ class _ImpactProfileScreenState extends ConsumerState<ImpactProfileScreen> {
     final textTheme = theme.textTheme;
 
     final claims = ref.watch(currentClaimsProvider);
-    final isPartner =
+    final isPartner = claims?.role == AppRole.donorPartner;
+    final canPinFixedLocation =
         claims?.role == AppRole.donorPartner ||
-        claims?.role == AppRole.partnerStaff;
+        claims?.role == AppRole.verifiedRecipient;
+    final pinnedLocation = ref.watch(
+      pinnedLocationNotifierProvider.select((s) => s.myLocation),
+    );
     final impact = isPartner
         ? ref.watch(partnerImpactSummaryProvider((start: null, end: null)))
         : ref.watch(myImpactSummaryProvider);
@@ -313,6 +324,83 @@ class _ImpactProfileScreenState extends ConsumerState<ImpactProfileScreen> {
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
+
+              if (canPinFixedLocation) ...[
+                AppSurfaceCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Wrap(
+                        spacing: AppSpacing.sm,
+                        runSpacing: AppSpacing.xs,
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            isPartner
+                                ? 'Lokasi Toko Tetap'
+                                : 'Lokasi Panti / Penerima Tetap',
+                            style: textTheme.titleSmall?.copyWith(
+                              color: colorScheme.onSurface,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          AppStatusChip(
+                            label: pinnedLocation != null
+                                ? 'Terkunci'
+                                : 'Belum Diatur',
+                            icon: Icons.location_pin,
+                            tone: pinnedLocation != null
+                                ? AppChipTone.primary
+                                : AppChipTone.error,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        pinnedLocation != null
+                            ? '${pinnedLocation.placeName} — '
+                                  '${pinnedLocation.address}'
+                            : isPartner
+                            ? 'Wajib tentukan titik peta toko agar lokasi '
+                                  'stok tidak mengikuti GPS perangkat Anda.'
+                            : 'Tentukan titik peta panti/komunitas agar '
+                                  'relawan mengetahui lokasi drop-off.',
+                        style: textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      if (pinnedLocation != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          _formatCoordinates(
+                            pinnedLocation.point.latitude,
+                            pinnedLocation.point.longitude,
+                          ),
+                          style: textTheme.labelSmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: AppSpacing.md),
+                      OutlinedButton.icon(
+                        key: const Key('impact_pinned_location_button'),
+                        onPressed: () => showAppBottomSheet<void>(
+                          context: context,
+                          builder: (_) => const PinnedLocationPickerSheet(),
+                        ),
+                        icon: const Icon(Icons.edit_location_alt_outlined),
+                        label: Text(
+                          pinnedLocation != null
+                              ? 'Ubah Titik Lokasi di Peta'
+                              : 'Atur Titik Lokasi di Peta',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+              ],
 
               PermissionGate(
                 requiredPermission: const {Permission.exportCsrReport},
@@ -667,4 +755,8 @@ String _kycApplicantSubtitle(KycApplication app) {
 String _formatReportBadge(String reportId, int byteLength) {
   final sizeKb = (byteLength / 1024).toStringAsFixed(1);
   return '$reportId • $sizeKb KB';
+}
+
+String _formatCoordinates(double lat, double lng) {
+  return 'Koordinat: ${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
 }

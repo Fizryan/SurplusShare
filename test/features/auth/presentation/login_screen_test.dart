@@ -81,9 +81,7 @@ void main() {
         );
         expect(button.onPressed, isNull);
 
-        completer.complete(
-          right(const AuthTokens(accessToken: 'a', refreshToken: 'r')),
-        );
+        completer.complete(right(const AuthTokens(accessToken: 'a')));
         await tester.pumpAndSettle();
 
         verify(

@@ -11,18 +11,12 @@ import 'package:surplus_share/core/network/api_response_parser.dart';
 
 abstract interface class AuthRepository {
   /// Signs in (or registers on first login) via Google OAuth and exchanges
-  /// the Google ID token for application JWT tokens.
+  /// the Google ID token for an application session token.
   ///
   /// [debugAccountId] is only honored by `DummyAuthRepository` in debug mode.
   Future<Either<AuthFailure, AuthTokens>> signInWithGoogle({
     String? debugAccountId,
   });
-
-  Future<Either<AuthFailure, AuthTokens>> refreshTokens();
-
-  /// Performs the raw refresh HTTP call without touching storage.
-  /// Shared SSOT between [refreshTokens] and `AuthInterceptor`.
-  Future<AuthTokens?> requestTokenRefresh(String refreshToken);
 
   Future<Either<AuthFailure, Unit>> logout();
 
@@ -50,6 +44,7 @@ class AuthRepositoryImpl implements AuthRepository {
         ApiEndpoints.googleAuth,
         data: <String, dynamic>{
           'id_token': credential.idToken,
+          if (credential.googleId != null) 'google_id': credential.googleId,
           'email': credential.email,
           if (credential.displayName != null) 'name': credential.displayName,
           if (credential.photoUrl != null) 'picture': credential.photoUrl,
@@ -82,55 +77,18 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<AuthTokens?> requestTokenRefresh(String refreshToken) async {
-    final response = await _dio.post<Map<String, dynamic>>(
-      ApiEndpoints.refresh,
-      data: <String, dynamic>{'refresh_token': refreshToken},
-    );
-    final data = response.data;
-    if (data == null) return null;
-    return AuthTokens.fromJson(data);
-  }
-
-  @override
-  Future<Either<AuthFailure, AuthTokens>> refreshTokens() async {
-    try {
-      final refreshToken = await _tokenStorage.getRefreshToken();
-      if (refreshToken == null || refreshToken.isEmpty) {
-        return left(const UnauthorizedFailure('Refresh token tidak tersedia.'));
-      }
-
-      final tokens = await requestTokenRefresh(refreshToken);
-      if (tokens == null) {
-        return left(const ServerFailure('Respons refresh token kosong.'));
-      }
-
-      await _tokenStorage.saveTokens(tokens);
-      return right(tokens);
-    } on DioException catch (e) {
-      final statusCode = e.response?.statusCode;
-      if (statusCode == 401 || statusCode == 403) {
-        await _safeClearTokens();
-      }
-      return left(_mapDioException(e));
-    } on FormatException catch (e) {
-      return left(ServerFailure(e.message));
-    } on PlatformException catch (e) {
-      return left(StorageFailure(e.message ?? 'Gagal mengakses token aman.'));
-    } on Object catch (e) {
-      return left(UnknownFailure(e.toString()));
-    }
-  }
-
-  @override
   Future<Either<AuthFailure, Unit>> logout() async {
     try {
-      final refreshToken = await _tokenStorage.getRefreshToken();
-      if (refreshToken != null && refreshToken.isNotEmpty) {
+      final accessToken = await _tokenStorage.getAccessToken();
+      if (accessToken != null && accessToken.isNotEmpty) {
         try {
           await _dio.post<dynamic>(
             ApiEndpoints.logout,
-            data: <String, dynamic>{'refresh_token': refreshToken},
+            options: Options(
+              headers: <String, dynamic>{
+                'Authorization': 'Bearer $accessToken',
+              },
+            ),
           );
         } on DioException {
           // Best-effort server revocation; local token cleanup still runs.
@@ -155,14 +113,6 @@ class AuthRepositoryImpl implements AuthRepository {
       return left(StorageFailure(e.message ?? 'Gagal membaca sesi tersimpan.'));
     } on Object catch (e) {
       return left(UnknownFailure(e.toString()));
-    }
-  }
-
-  Future<void> _safeClearTokens() async {
-    try {
-      await _tokenStorage.clearTokens();
-    } on Object {
-      // Ignore cleanup errors during failure handling.
     }
   }
 

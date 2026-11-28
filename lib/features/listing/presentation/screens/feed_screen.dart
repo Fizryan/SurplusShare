@@ -12,6 +12,7 @@ import 'package:surplus_share/core/shared/widgets/app_empty_state.dart';
 import 'package:surplus_share/core/shared/widgets/app_error_banner.dart';
 import 'package:surplus_share/core/shared/widgets/app_skeleton_card.dart';
 import 'package:surplus_share/core/theme/app_tokens.dart';
+import 'package:surplus_share/features/distribution/presentation/widgets/allocate_volunteer_sheet.dart';
 import 'package:surplus_share/features/listing/domain/models/listing_channel.dart';
 import 'package:surplus_share/features/listing/domain/models/surplus_listing.dart';
 import 'package:surplus_share/features/listing/domain/policy/listing_access_policy.dart';
@@ -71,9 +72,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     );
     final permissions = ref.watch(currentPermissionProvider);
     final claims = ref.watch(currentClaimsProvider);
-    final canBrowseDonation = permissions.contains(
-      Permission.browseDonationListings,
-    );
+    final canFilterChannel =
+        permissions.contains(Permission.browseDonationListings) ||
+        permissions.contains(Permission.createListing);
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
@@ -127,7 +128,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                         .loadListings(),
                   ),
                 ),
-              if (canBrowseDonation)
+              if (canFilterChannel)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
                     AppSpacing.lg,
@@ -199,21 +200,38 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                                 const SizedBox(height: AppSpacing.md),
                             itemBuilder: (context, index) {
                               final item = listings[index];
-                              final canConvert =
-                                  item.canConvertToDonation() &&
-                                  ListingAccessPolicy.canManage(
+                              final canManage = ListingAccessPolicy.canManage(
+                                item,
+                                currentUserId: claims?.subject,
+                                role: claims?.role ?? AppRole.consumer,
+                                permissions: permissions,
+                              );
+                              final canClaim =
+                                  ListingAccessPolicy.canClaimChannel(
                                     item,
+                                    permissions,
                                     currentUserId: claims?.subject,
-                                    role: claims?.role ?? AppRole.consumer,
-                                    permissions: permissions,
                                   );
+                              final canConvert =
+                                  item.canConvertToDonation() && canManage;
 
                               return ListingCard(
                                 listing: item,
                                 canConvertToDonation: canConvert,
                                 onConvertToDonation: () =>
                                     _convertToDonation(ref, item),
-                                onAction: () => bookOrClaimListing(ref, item),
+                                onAllocateVolunteer:
+                                    canManage && item.remainingQuantity > 0
+                                    ? () => showAppBottomSheet<void>(
+                                        context: context,
+                                        builder: (_) => AllocateVolunteerSheet(
+                                          listing: item,
+                                        ),
+                                      )
+                                    : null,
+                                onAction: canClaim
+                                    ? () => showBookListingSheet(context, item)
+                                    : null,
                               );
                             },
                           ),

@@ -15,6 +15,8 @@ abstract interface class PushNotificationDispatcher {
 
 /// In-memory broadcast dispatcher for local/debug mode and deterministic tests.
 class InMemoryPushNotificationDispatcher implements PushNotificationDispatcher {
+  static const int _maxHistory = 50;
+
   final _controller = StreamController<RadiusNotificationEvent>.broadcast();
   final List<RadiusNotificationEvent> _history = [];
 
@@ -28,6 +30,9 @@ class InMemoryPushNotificationDispatcher implements PushNotificationDispatcher {
   @override
   Future<void> dispatch(RadiusNotificationEvent event) async {
     _history.insert(0, event);
+    if (_history.length > _maxHistory) {
+      _history.removeRange(_maxHistory, _history.length);
+    }
     if (!_controller.isClosed) {
       _controller.add(event);
     }

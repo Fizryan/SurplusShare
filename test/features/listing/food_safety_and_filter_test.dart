@@ -26,9 +26,6 @@ class _InMemoryTokenStorage implements TokenStorage {
   Future<String?> getAccessToken() async => _tokens?.accessToken;
 
   @override
-  Future<String?> getRefreshToken() async => _tokens?.refreshToken;
-
-  @override
   Future<AuthTokens?> getTokens() async => _tokens;
 
   @override
@@ -164,25 +161,29 @@ void main() {
           .signInWithGoogle(debugAccountId: DummyAuthAccounts.donorPartner.id);
       await container.read(listingNotifierProvider.notifier).loadListings();
 
-      // Seeded discount listings:
+      // Seeded listings owned by donorPartner (2 discount + 1 donation):
       // - lst-flash-1: halalCertified, readyToEat, allergens: {peanuts}
       // - lst-bag-1: halalFriendly, bakery, allergens: {gluten, dairy}
-      expect(container.read(visibleListingsProvider).length, 2);
+      // - lst-donation-1: halalCertified, readyToEat, allergens: {}
+      expect(container.read(visibleListingsProvider).length, 3);
 
-      // Exclude peanuts -> hides lst-flash-1, leaves only lst-bag-1.
+      // Exclude peanuts -> hides lst-flash-1.
       await container
           .read(foodSafetyFilterProvider.notifier)
           .toggleExcludedAllergen(FoodAllergen.peanuts);
       expect(
         container.read(visibleListingsProvider).map((e) => e.id),
-        equals(['lst-bag-1']),
+        equals(['lst-bag-1', 'lst-donation-1']),
       );
 
       // Enable halalCertifiedOnly -> hides halalFriendly lst-bag-1 too.
       await container
           .read(foodSafetyFilterProvider.notifier)
           .setHalalCertifiedOnly(enabled: true);
-      expect(container.read(visibleListingsProvider), isEmpty);
+      expect(
+        container.read(visibleListingsProvider).map((e) => e.id),
+        equals(['lst-donation-1']),
+      );
 
       // New container hydrates the user-scoped filter from CacheStore.
       final rehydrated = makeContainer();

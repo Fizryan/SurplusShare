@@ -6,7 +6,7 @@ abstract final class PermissionPolicy {
     AppRole.consumer: {Permission.browseDiscountListings},
     AppRole.verifiedRecipient: {Permission.browseDiscountListings},
     AppRole.donorPartner: {Permission.browseDiscountListings},
-    AppRole.partnerStaff: {Permission.browseDiscountListings},
+    AppRole.volunteer: {Permission.browseDiscountListings},
     AppRole.admin: {
       Permission.browseDiscountListings,
       Permission.browseDonationListings,
@@ -15,6 +15,7 @@ abstract final class PermissionPolicy {
       Permission.manageListing,
       Permission.validatePickupPin,
       Permission.exportCsrReport,
+      Permission.manageDistribution,
       Permission.reviewKyc,
     },
   };
@@ -30,12 +31,7 @@ abstract final class PermissionPolicy {
       Permission.validatePickupPin,
       Permission.exportCsrReport,
     },
-    AppRole.partnerStaff: {
-      Permission.createListing,
-      Permission.manageListing,
-      Permission.validatePickupPin,
-      Permission.exportCsrReport,
-    },
+    AppRole.volunteer: {Permission.manageDistribution},
   };
 
   static Set<Permission> defaultsForRole(AppRole role) {

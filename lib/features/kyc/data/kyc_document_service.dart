@@ -61,9 +61,10 @@ class RemoteKycDocumentService implements KycDocumentService {
     required String mimeType,
     required int fileSizeBytes,
   }) async {
+    final safeFileName = p.basename(fileName.trim());
     final candidate = KycDocument(
       type: type,
-      fileName: fileName,
+      fileName: safeFileName,
       filePath: filePath,
       mimeType: mimeType,
       fileSizeBytes: fileSizeBytes,
@@ -76,7 +77,7 @@ class RemoteKycDocumentService implements KycDocumentService {
     try {
       final formData = FormData.fromMap(<String, dynamic>{
         'type': type.name,
-        'file': await MultipartFile.fromFile(filePath, filename: fileName),
+        'file': await MultipartFile.fromFile(filePath, filename: safeFileName),
       });
       final response = await _dio.post<dynamic>(
         ApiEndpoints.uploadKycDocument,

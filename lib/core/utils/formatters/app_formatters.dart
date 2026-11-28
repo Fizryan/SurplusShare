@@ -53,7 +53,7 @@ abstract final class AppFormatters {
     AppRole.consumer => 'Konsumen',
     AppRole.verifiedRecipient => 'Penerima Donasi',
     AppRole.donorPartner => 'Mitra Donatur',
-    AppRole.partnerStaff => 'Staf Mitra',
+    AppRole.volunteer => 'Relawan',
     AppRole.admin => 'Admin',
   };
 }

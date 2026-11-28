@@ -15,6 +15,7 @@ class ReservationCard extends StatelessWidget {
     required this.reservation,
     this.now,
     this.isBusy = false,
+    this.showPickupPin = true,
     this.onConfirmPayment,
     this.onCancel,
     this.onValidatePin,
@@ -25,6 +26,7 @@ class ReservationCard extends StatelessWidget {
   final Reservation reservation;
   final DateTime? now;
   final bool isBusy;
+  final bool showPickupPin;
   final VoidCallback? onConfirmPayment;
   final VoidCallback? onCancel;
   final VoidCallback? onValidatePin;
@@ -115,7 +117,8 @@ class ReservationCard extends StatelessWidget {
               ),
             ),
           ],
-          if (status == ReservationStatus.confirmed &&
+          if (showPickupPin &&
+              status == ReservationStatus.confirmed &&
               reservation.pickupPin != null) ...[
             const SizedBox(height: AppSpacing.md),
             Semantics(

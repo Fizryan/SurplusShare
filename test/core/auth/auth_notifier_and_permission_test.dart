@@ -12,6 +12,8 @@ import 'package:surplus_share/core/auth/repository/auth_repository.dart';
 import 'package:surplus_share/core/permission/permission.dart';
 import 'package:surplus_share/core/permission/permission_provider.dart';
 
+import '../../helpers/in_memory_token_storage.dart';
+
 class _MockAuthRepository extends Mock implements AuthRepository;
 
 String _buildJwt(Map<String, dynamic> payload) {
@@ -22,12 +24,17 @@ String _buildJwt(Map<String, dynamic> payload) {
 
 void main() {
   late _MockAuthRepository repository;
+  late InMemoryTokenStorage tokenStorage;
   late ProviderContainer container;
 
   setUp(() {
     repository = _MockAuthRepository();
+    tokenStorage = InMemoryTokenStorage();
     container = ProviderContainer(
-      overrides: [authRepositoryProvider.overrideWithValue(repository)],
+      overrides: [
+        authRepositoryProvider.overrideWithValue(repository),
+        tokenStorageProvider.overrideWithValue(tokenStorage),
+      ],
     );
   });
 
@@ -56,7 +63,7 @@ void main() {
         'email': 'budi@gmail.com',
         'role': 'consumer',
       });
-      final tokens = AuthTokens(accessToken: jwt, refreshToken: 'ref-1');
+      final tokens = AuthTokens(accessToken: jwt);
 
       when(() => repository.signInWithGoogle())
           .thenAnswer((_) async => right(tokens));
@@ -95,7 +102,7 @@ void main() {
           'role': 'consumer',
           'revoked_permissions': ['browse_discount_listings'],
         });
-        final tokens = AuthTokens(accessToken: jwt, refreshToken: 'ref-2');
+        final tokens = AuthTokens(accessToken: jwt);
 
         when(() => repository.signInWithGoogle())
             .thenAnswer((_) async => right(tokens));
@@ -135,10 +142,10 @@ void main() {
     );
 
     test(
-      'restoreSession restores authenticated session when tokens exist',
+      'restoreSession restores authenticated session when token is valid',
       () async {
         final jwt = _buildJwt({'sub': 'u-restored', 'role': 'consumer'});
-        final tokens = AuthTokens(accessToken: jwt, refreshToken: 'r');
+        final tokens = AuthTokens(accessToken: jwt);
         when(() => repository.restoreSession())
             .thenAnswer((_) async => right(tokens));
 
@@ -154,7 +161,7 @@ void main() {
 
     test('logout and expireSession clear permissions', () async {
       final jwt = _buildJwt({'sub': 'u1', 'role': 'consumer'});
-      final tokens = AuthTokens(accessToken: jwt, refreshToken: 'r');
+      final tokens = AuthTokens(accessToken: jwt);
       when(() => repository.signInWithGoogle())
           .thenAnswer((_) async => right(tokens));
 
@@ -173,27 +180,7 @@ void main() {
       expect(container.read(authNotifierProvider), const AuthUnauthenticated());
     });
 
-    test(
-      'syncTokens is ignored after logout to prevent stale refresh race',
-      () async {
-        when(() => repository.logout()).thenAnswer((_) async => right(unit));
-        await container.read(authNotifierProvider.notifier).logout();
-
-        container
-            .read(authNotifierProvider.notifier)
-            .syncTokens(
-              const AuthTokens(accessToken: 'stale-new', refreshToken: 'r2'),
-            );
-
-        expect(
-          container.read(authNotifierProvider),
-          const AuthUnauthenticated(),
-        );
-        expect(container.read(currentPermissionProvider), isEmpty);
-      },
-    );
-
-    test('restoreSession proactively refreshes expired JWT', () async {
+    test('restoreSession clears expired session token and logs out', () async {
       final expiredExp =
           DateTime.now()
               .toUtc()
@@ -205,61 +192,18 @@ void main() {
         'role': 'consumer',
         'exp': expiredExp,
       });
-      final freshExp =
-          DateTime.now()
-              .toUtc()
-              .add(const Duration(hours: 1))
-              .millisecondsSinceEpoch ~/
-          1000;
-      final freshJwt = _buildJwt({
-        'sub': 'u1',
-        'role': 'consumer',
-        'exp': freshExp,
-      });
 
-      when(() => repository.restoreSession()).thenAnswer(
-        (_) async =>
-            right(AuthTokens(accessToken: expiredJwt, refreshToken: 'r')),
-      );
-      when(() => repository.refreshTokens()).thenAnswer(
-        (_) async =>
-            right(AuthTokens(accessToken: freshJwt, refreshToken: 'r2')),
-      );
+      await tokenStorage.saveTokens(AuthTokens(accessToken: expiredJwt));
+      when(() => repository.restoreSession())
+          .thenAnswer((_) async => right(AuthTokens(accessToken: expiredJwt)));
 
       await container.read(authNotifierProvider.notifier).restoreSession();
 
-      final state = container.read(authNotifierProvider);
-      expect(state, isA<AuthAuthenticated>());
-      expect((state as AuthAuthenticated).tokens.accessToken, freshJwt);
-      verify(() => repository.refreshTokens()).called(1);
+      expect(
+        container.read(authNotifierProvider),
+        const AuthUnauthenticated(failure: UnauthorizedFailure()),
+      );
+      expect(await tokenStorage.getTokens(), isNull);
     });
-
-    test(
-      'restoreSession logs out when proactive refresh returns unauthorized',
-      () async {
-        final expiredExp =
-            DateTime.now()
-                .toUtc()
-                .subtract(const Duration(minutes: 5))
-                .millisecondsSinceEpoch ~/
-            1000;
-        final expiredJwt = _buildJwt({'sub': 'u1', 'exp': expiredExp});
-
-        when(() => repository.restoreSession()).thenAnswer(
-          (_) async =>
-              right(AuthTokens(accessToken: expiredJwt, refreshToken: 'r')),
-        );
-        when(
-          () => repository.refreshTokens(),
-        ).thenAnswer((_) async => left(const UnauthorizedFailure('Revoked')));
-
-        await container.read(authNotifierProvider.notifier).restoreSession();
-
-        expect(
-          container.read(authNotifierProvider),
-          const AuthUnauthenticated(failure: UnauthorizedFailure('Revoked')),
-        );
-      },
-    );
   });
 }

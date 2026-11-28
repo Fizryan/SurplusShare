@@ -52,12 +52,12 @@ abstract final class DummyAuthAccounts {
     displayName: 'Resto Nusantara',
   );
 
-  static const partnerStaff = DummyAuthAccount(
-    id: 'usr-staff-1',
-    email: 'staff@surplusshare.id',
-    role: AppRole.partnerStaff,
+  static const volunteer = DummyAuthAccount(
+    id: 'usr-volunteer-1',
+    email: 'volunteer@surplusshare.id',
+    role: AppRole.volunteer,
     kycStatus: KycStatus.approved,
-    displayName: 'Staf Dapur Nusantara',
+    displayName: 'Relawan Distribusi',
   );
 
   static const admin = DummyAuthAccount(
@@ -72,7 +72,7 @@ abstract final class DummyAuthAccounts {
     consumer,
     verifiedRecipient,
     donorPartner,
-    partnerStaff,
+    volunteer,
     admin,
   ];
 }
@@ -81,8 +81,6 @@ abstract final class DummyAuthAccounts {
 class DummyAuthRepository implements AuthRepository {
   new({required this._tokenStorage})
     : _accounts = List<DummyAuthAccount>.of(DummyAuthAccounts.all);
-
-  static const _refreshPrefix = 'dummy-refresh:';
 
   final TokenStorage _tokenStorage;
   final List<DummyAuthAccount> _accounts;
@@ -99,39 +97,6 @@ class DummyAuthRepository implements AuthRepository {
     }
 
     return await _issueAndStoreTokens(account);
-  }
-
-  @override
-  Future<AuthTokens?> requestTokenRefresh(String refreshToken) async {
-    if (!refreshToken.startsWith(_refreshPrefix)) return null;
-    final parts = refreshToken.substring(_refreshPrefix.length).split(':');
-    final userId = parts.isNotEmpty ? parts.first : '';
-    final account = _findById(userId);
-    if (account == null) return null;
-    return _buildTokens(account);
-  }
-
-  @override
-  Future<Either<AuthFailure, AuthTokens>> refreshTokens() async {
-    try {
-      final refreshToken = await _tokenStorage.getRefreshToken();
-      if (refreshToken == null) {
-        return left(const UnauthorizedFailure('Refresh token tidak valid.'));
-      }
-
-      final tokens = await requestTokenRefresh(refreshToken);
-      if (tokens == null) {
-        await _tokenStorage.clearTokens();
-        return left(const UnauthorizedFailure('Refresh token tidak valid.'));
-      }
-
-      await _tokenStorage.saveTokens(tokens);
-      return right(tokens);
-    } on PlatformException catch (e) {
-      return left(StorageFailure(e.message ?? 'Gagal mengakses token aman.'));
-    } on Object catch (e) {
-      return left(UnknownFailure(e.toString()));
-    }
   }
 
   @override
@@ -183,10 +148,8 @@ class DummyAuthRepository implements AuthRepository {
       'kyc_status': account.kycStatus.name,
       'exp': exp.millisecondsSinceEpoch ~/ 1000,
     });
-    final refreshToken =
-        '$_refreshPrefix${account.id}:${now.millisecondsSinceEpoch}';
 
-    return AuthTokens(accessToken: accessToken, refreshToken: refreshToken);
+    return AuthTokens(accessToken: accessToken);
   }
 
   DummyAuthAccount? _findById(String id) {

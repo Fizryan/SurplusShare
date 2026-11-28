@@ -24,15 +24,15 @@ void main() {
 
   const sampleCredential = GoogleAuthCredential(
     idToken: 'google-id-token-123',
+    googleId: 'google-sub-1',
     email: 'budi@gmail.com',
     displayName: 'Budi',
     photoUrl: 'https://example.com/photo.jpg',
   );
 
   setUpAll(() {
-    registerFallbackValue(
-      const AuthTokens(accessToken: 'fallback', refreshToken: 'fallback'),
-    );
+    registerFallbackValue(const AuthTokens(accessToken: 'fallback'));
+    registerFallbackValue(Options());
   });
 
   setUp(() {
@@ -46,9 +46,9 @@ void main() {
     );
   });
 
-  group('AuthRepositoryImpl (Google Auth)', () {
+  group('AuthRepositoryImpl (Google Auth — Session Token Only)', () {
     test(
-      'signInWithGoogle exchanges Google idToken and saves JWT tokens',
+      'signInWithGoogle exchanges Google idToken and saves session token',
       () async {
         when(() => googleAuthClient.signIn())
             .thenAnswer((_) async => sampleCredential);
@@ -57,6 +57,7 @@ void main() {
             ApiEndpoints.googleAuth,
             data: {
               'id_token': 'google-id-token-123',
+              'google_id': 'google-sub-1',
               'email': 'budi@gmail.com',
               'name': 'Budi',
               'picture': 'https://example.com/photo.jpg',
@@ -67,7 +68,7 @@ void main() {
             requestOptions: RequestOptions(path: ApiEndpoints.googleAuth),
             statusCode: 200,
             data: {
-              'data': {'access_token': 'acc-1', 'refresh_token': 'ref-1'},
+              'data': {'access_token': 'acc-1'},
             },
           ),
         );
@@ -78,13 +79,11 @@ void main() {
         expect(
           result,
           right<AuthFailure, AuthTokens>(
-            const AuthTokens(accessToken: 'acc-1', refreshToken: 'ref-1'),
+            const AuthTokens(accessToken: 'acc-1'),
           ),
         );
         verify(
-          () => tokenStorage.saveTokens(
-            const AuthTokens(accessToken: 'acc-1', refreshToken: 'ref-1'),
-          ),
+          () => tokenStorage.saveTokens(const AuthTokens(accessToken: 'acc-1')),
         ).called(1);
       },
     );
@@ -166,74 +165,30 @@ void main() {
       );
     });
 
-    test(
-      'refreshTokens returns UnauthorizedFailure if no stored refreshToken',
-      () async {
-        when(() => tokenStorage.getRefreshToken())
-            .thenAnswer((_) async => null);
-
-        final result = await repository.refreshTokens();
-
-        expect(result.isLeft(), isTrue);
-        result.fold(
-          (failure) => expect(failure, isA<UnauthorizedFailure>()),
-          (_) => fail('Expected Left'),
-        );
-      },
-    );
-
-    test('refreshTokens clears tokens when server returns 401', () async {
-      when(() => tokenStorage.getRefreshToken())
-          .thenAnswer((_) async => 'expired-ref');
-      when(() => tokenStorage.clearTokens()).thenAnswer((_) async {});
+    test('logout sends Bearer header, signs out Google, and clears local token '
+        'even on network fail', () async {
+      when(() => tokenStorage.getAccessToken())
+          .thenAnswer((_) async => 'acc-1');
       when(
-        () => dio.post<Map<String, dynamic>>(
-          ApiEndpoints.refresh,
-          data: {'refresh_token': 'expired-ref'},
+        () => dio.post<dynamic>(
+          ApiEndpoints.logout,
+          options: any(named: 'options'),
         ),
       ).thenThrow(
         DioException(
-          requestOptions: RequestOptions(path: ApiEndpoints.refresh),
-          response: Response<dynamic>(
-            requestOptions: RequestOptions(path: ApiEndpoints.refresh),
-            statusCode: 401,
-          ),
-          type: DioExceptionType.badResponse,
+          requestOptions: RequestOptions(path: ApiEndpoints.logout),
+          type: DioExceptionType.connectionError,
         ),
       );
+      when(() => googleAuthClient.signOut()).thenAnswer((_) async {});
+      when(() => tokenStorage.clearTokens()).thenAnswer((_) async {});
 
-      final result = await repository.refreshTokens();
+      final result = await repository.logout();
 
-      expect(result.isLeft(), isTrue);
+      expect(result, right<AuthFailure, Unit>(unit));
+      verify(() => googleAuthClient.signOut()).called(1);
       verify(() => tokenStorage.clearTokens()).called(1);
     });
-
-    test(
-      'logout signs out Google and clears local tokens even on network fail',
-      () async {
-        when(() => tokenStorage.getRefreshToken())
-            .thenAnswer((_) async => 'ref-1');
-        when(
-          () => dio.post<dynamic>(
-            ApiEndpoints.logout,
-            data: {'refresh_token': 'ref-1'},
-          ),
-        ).thenThrow(
-          DioException(
-            requestOptions: RequestOptions(path: ApiEndpoints.logout),
-            type: DioExceptionType.connectionError,
-          ),
-        );
-        when(() => googleAuthClient.signOut()).thenAnswer((_) async {});
-        when(() => tokenStorage.clearTokens()).thenAnswer((_) async {});
-
-        final result = await repository.logout();
-
-        expect(result, right<AuthFailure, Unit>(unit));
-        verify(() => googleAuthClient.signOut()).called(1);
-        verify(() => tokenStorage.clearTokens()).called(1);
-      },
-    );
 
     test('restoreSession maps PlatformException to StorageFailure', () async {
       when(

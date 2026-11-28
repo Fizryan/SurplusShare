@@ -62,17 +62,11 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
 final authenticatedDioProvider = Provider<Dio>((ref) {
   final config = ref.watch(apiConfigProvider);
   final tokenStorage = ref.watch(tokenStorageProvider);
-  final authRepository = ref.watch(authRepositoryProvider);
 
   final dio = createAuthenticatedDio(
     config: config,
-    interceptorBuilder: (dio) => AuthInterceptor(
+    interceptorBuilder: (_) => AuthInterceptor(
       tokenStorage: tokenStorage,
-      retryRequest: dio.fetch,
-      onRefresh: authRepository.requestTokenRefresh,
-      onTokensRefreshed: (tokens) {
-        ref.read(authNotifierProvider.notifier).syncTokens(tokens);
-      },
       onSessionExpired: () {
         ref.read(authNotifierProvider.notifier).expireSession();
       },
@@ -122,15 +116,10 @@ class AuthNotifier extends Notifier<AuthState> {
         }
 
         final claims = JwtClaims.tryParse(tokens.accessToken);
-        if (claims != null && claims.isExpiringSoon()) {
-          final refreshed = await repo.refreshTokens();
+        if (claims != null && claims.isExpired) {
+          await ref.read(tokenStorageProvider).clearTokens();
           if (!ref.mounted) return;
-          state = refreshed.fold(
-            (failure) => failure is UnauthorizedFailure
-                ? AuthUnauthenticated(failure: failure)
-                : _authenticatedState(tokens),
-            _authenticatedState,
-          );
+          state = const AuthUnauthenticated(failure: UnauthorizedFailure());
           return;
         }
 
@@ -175,13 +164,6 @@ class AuthNotifier extends Notifier<AuthState> {
       (failure) => AuthUnauthenticated(failure: failure),
       (_) => const AuthUnauthenticated(),
     );
-  }
-
-  /// Syncs refreshed tokens from background interceptor ONLY if the user
-  /// is currently authenticated (prevents stale refresh overriding `logout()`).
-  void syncTokens(AuthTokens tokens) {
-    if (state is! AuthAuthenticated) return;
-    state = _authenticatedState(tokens);
   }
 
   void expireSession() {

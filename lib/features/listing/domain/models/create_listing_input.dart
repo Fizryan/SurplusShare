@@ -18,6 +18,7 @@ class CreateListingInput {
     required this.quantity,
     required this.pickupStart,
     required this.pickupEnd,
+    this.volunteerAllocatedPortions = 0,
     this.discountFormat,
     this.location,
     this.address,
@@ -36,6 +37,7 @@ class CreateListingInput {
   final int originalPrice;
   final int discountedPrice;
   final int quantity;
+  final int volunteerAllocatedPortions;
   final DateTime pickupStart;
   final DateTime pickupEnd;
   final GeoPoint? location;
@@ -60,6 +62,11 @@ class CreateListingInput {
     if (quantity <= 0) {
       return 'Jumlah stok harus lebih dari 0.';
     }
+    if (volunteerAllocatedPortions < 0 ||
+        volunteerAllocatedPortions > quantity) {
+      return 'Alokasi porsi relawan harus berada di antara 0 hingga '
+          '$quantity porsi.';
+    }
 
     final windowError = pickupWindow.validate(now: now);
     if (windowError != null) return windowError;
@@ -76,12 +83,11 @@ class CreateListingInput {
       if (safetyError != null) return safetyError;
     }
 
-    if (originalPrice <= 0) {
-      return 'Harga asli harus lebih dari 0.';
-    }
-
     switch (channel) {
       case ListingChannel.discount:
+        if (originalPrice <= 0) {
+          return 'Harga asli harus lebih dari 0.';
+        }
         if (discountFormat == null) {
           return 'Format diskon (Flash Sale / Surprise Bag) wajib dipilih.';
         }
@@ -98,6 +104,9 @@ class CreateListingInput {
               '$minDiscountPercent% hingga $maxDiscountPercent%.';
         }
       case ListingChannel.donation:
+        if (originalPrice < 0) {
+          return 'Harga asli tidak boleh negatif.';
+        }
         if (discountedPrice != 0) {
           return 'Mode Donasi Gratis wajib memiliki harga 0.';
         }

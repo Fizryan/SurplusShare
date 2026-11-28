@@ -13,12 +13,18 @@ class PaymentSession {
 
   factory fromJson(Map<String, dynamic> json) {
     final rawMethod = json['method'] as String? ?? '';
+    final checkoutUrl = Uri.parse(
+      (json['checkout_url'] ?? json['checkoutUrl']) as String,
+    );
+    if (checkoutUrl.scheme != 'https' || checkoutUrl.host.isEmpty) {
+      throw const FormatException(
+        'URL pembayaran tidak aman; wajib menggunakan HTTPS.',
+      );
+    }
     return PaymentSession(
       sessionId:
           json['session_id'] as String? ?? json['sessionId'] as String? ?? '',
-      checkoutUrl: Uri.parse(
-        (json['checkout_url'] ?? json['checkoutUrl']) as String,
-      ),
+      checkoutUrl: checkoutUrl,
       method: PaymentMethod.values.firstWhere(
         (e) => e.name == rawMethod,
         orElse: () => PaymentMethod.qris,

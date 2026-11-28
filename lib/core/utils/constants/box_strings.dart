@@ -21,4 +21,6 @@ abstract final class CacheKeys {
       'cache_food_safety_filter_$userId';
   static String dailyQuotaFor(String userId) =>
       'cache_daily_quota_snapshot_$userId';
+  static String pinnedLocationFor(String userId) =>
+      'cache_pinned_location_$userId';
 }

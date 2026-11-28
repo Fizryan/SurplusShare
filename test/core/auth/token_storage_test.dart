@@ -17,7 +17,7 @@ void main() {
   });
 
   group('SecureTokenStorage', () {
-    test('saveTokens writes access and refresh tokens', () async {
+    test('saveTokens writes session token', () async {
       when(
         () => secureStorage.write(
           key: any(named: 'key'),
@@ -25,10 +25,7 @@ void main() {
         ),
       ).thenAnswer((_) async {});
 
-      const tokens = AuthTokens(
-        accessToken: 'access-1',
-        refreshToken: 'refresh-1',
-      );
+      const tokens = AuthTokens(accessToken: 'access-1');
       await tokenStorage.saveTokens(tokens);
 
       verify(
@@ -37,43 +34,27 @@ void main() {
           value: 'access-1',
         ),
       ).called(1);
-      verify(
-        () => secureStorage.write(
-          key: SecureTokenStorage.refreshTokenKey,
-          value: 'refresh-1',
-        ),
-      ).called(1);
     });
 
-    test('getTokens returns AuthTokens when both values are stored', () async {
+    test('getTokens returns AuthTokens when stored', () async {
       when(() => secureStorage.read(key: SecureTokenStorage.accessTokenKey))
           .thenAnswer((_) async => 'access-1');
-      when(() => secureStorage.read(key: SecureTokenStorage.refreshTokenKey))
-          .thenAnswer((_) async => 'refresh-1');
 
       final result = await tokenStorage.getTokens();
 
-      expect(
-        result,
-        const AuthTokens(accessToken: 'access-1', refreshToken: 'refresh-1'),
-      );
+      expect(result, const AuthTokens(accessToken: 'access-1'));
     });
 
-    test(
-      'getTokens returns null when either token is missing or blank',
-      () async {
-        when(() => secureStorage.read(key: SecureTokenStorage.accessTokenKey))
-            .thenAnswer((_) async => 'access-1');
-        when(() => secureStorage.read(key: SecureTokenStorage.refreshTokenKey))
-            .thenAnswer((_) async => '   ');
+    test('getTokens returns null when token is missing or blank', () async {
+      when(() => secureStorage.read(key: SecureTokenStorage.accessTokenKey))
+          .thenAnswer((_) async => '   ');
 
-        final result = await tokenStorage.getTokens();
+      final result = await tokenStorage.getTokens();
 
-        expect(result, isNull);
-      },
-    );
+      expect(result, isNull);
+    });
 
-    test('clearTokens deletes both keys', () async {
+    test('clearTokens deletes access token and legacy refresh key', () async {
       when(() => secureStorage.delete(key: any(named: 'key')))
           .thenAnswer((_) async {});
 
@@ -81,13 +62,11 @@ void main() {
 
       verify(() => secureStorage.delete(key: SecureTokenStorage.accessTokenKey))
           .called(1);
-      verify(
-        () => secureStorage.delete(key: SecureTokenStorage.refreshTokenKey),
-      ).called(1);
+      verify(() => secureStorage.delete(key: 'auth_refresh_token')).called(1);
     });
 
     test(
-      'caches tokens in memory to avoid repeated platform channel reads',
+      'caches token in memory to avoid repeated platform channel reads',
       () async {
         when(
           () => secureStorage.write(
@@ -97,14 +76,13 @@ void main() {
         ).thenAnswer((_) async {});
 
         await tokenStorage.saveTokens(
-          const AuthTokens(accessToken: 'cached-a', refreshToken: 'cached-r'),
+          const AuthTokens(accessToken: 'cached-a'),
         );
 
         expect(await tokenStorage.getAccessToken(), 'cached-a');
-        expect(await tokenStorage.getRefreshToken(), 'cached-r');
         expect(
           await tokenStorage.getTokens(),
-          const AuthTokens(accessToken: 'cached-a', refreshToken: 'cached-r'),
+          const AuthTokens(accessToken: 'cached-a'),
         );
 
         verifyNever(() => secureStorage.read(key: any(named: 'key')));

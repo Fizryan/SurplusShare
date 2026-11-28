@@ -172,6 +172,7 @@ final visibleListingsProvider = Provider<List<SurplusListing>>((ref) {
     listingNotifierProvider.select((state) => state.items),
   );
   final permissions = ref.watch(currentPermissionProvider);
+  final claims = ref.watch(currentClaimsProvider);
   final channelFilter = ref.watch(listingChannelFilterProvider);
   final safetyFilter = ref.watch(foodSafetyFilterProvider);
 
@@ -179,6 +180,8 @@ final visibleListingsProvider = Provider<List<SurplusListing>>((ref) {
     items,
     permissions,
     channelFilter: channelFilter,
+    currentUserId: claims?.subject,
+    role: claims?.role,
   ).where(safetyFilter.matches).toList(growable: false);
 });
 
@@ -360,6 +363,21 @@ class ListingNotifier extends Notifier<ListingState> {
     );
   }
 
+  Future<bool> allocateVolunteerPortions({
+    required String listingId,
+    required int portions,
+  }) {
+    return _runManagedAction(
+      listingId: listingId,
+      deniedMessage:
+          'Anda tidak memiliki izin mengalokasikan porsi relawan untuk '
+          'listing ini.',
+      action: () => ref
+          .read(listingRepositoryProvider)
+          .allocateVolunteerPortions(listingId: listingId, portions: portions),
+    );
+  }
+
   Future<bool> claimStock({
     required String listingId,
     required int quantity,
@@ -389,8 +407,16 @@ class ListingNotifier extends Notifier<ListingState> {
     }
 
     final permissions = ref.read(currentPermissionProvider);
-    if (!ListingAccessPolicy.canClaim(target, permissions, now: now)) {
-      final message = target.channel == ListingChannel.donation
+    final currentUserId = ref.read(currentClaimsProvider)?.subject;
+    if (!ListingAccessPolicy.canClaim(
+      target,
+      permissions,
+      now: now,
+      currentUserId: currentUserId,
+    )) {
+      final message = currentUserId != null && target.partnerId == currentUserId
+          ? 'Anda tidak dapat memesan stok milik gerai Anda sendiri.'
+          : target.channel == ListingChannel.donation
           ? 'Donasi Gratis hanya dapat diklaim oleh panti asuhan atau '
                 'komunitas terverifikasi.'
           : 'Anda tidak memiliki izin untuk mengklaim listing ini.';

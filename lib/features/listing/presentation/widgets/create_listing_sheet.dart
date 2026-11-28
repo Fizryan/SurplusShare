@@ -1,18 +1,25 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:surplus_share/core/auth/provider/auth_provider.dart';
 import 'package:surplus_share/core/di/global_provider.dart';
 import 'package:surplus_share/core/shared/widgets/app_bottom_sheet_scaffold.dart';
+import 'package:surplus_share/core/shared/widgets/app_surface_card.dart';
 import 'package:surplus_share/core/theme/app_tokens.dart';
 import 'package:surplus_share/core/time/clock_provider.dart';
 import 'package:surplus_share/core/utils/formatters/app_formatters.dart';
 import 'package:surplus_share/features/auth/presentation/widgets/auth_submit_button.dart';
+import 'package:surplus_share/features/distribution/domain/models/distribution_task.dart';
+import 'package:surplus_share/features/distribution/presentation/provider/distribution_provider.dart';
 import 'package:surplus_share/features/listing/domain/models/create_listing_input.dart';
 import 'package:surplus_share/features/listing/domain/models/food_safety_declaration.dart';
 import 'package:surplus_share/features/listing/domain/models/listing_channel.dart';
 import 'package:surplus_share/features/listing/presentation/provider/listing_provider.dart';
-import 'package:surplus_share/features/location/presentation/provider/location_provider.dart';
+import 'package:surplus_share/features/location/domain/models/pinned_location.dart';
+import 'package:surplus_share/features/location/presentation/provider/pinned_location_provider.dart';
+import 'package:surplus_share/features/location/presentation/widgets/pinned_location_picker_sheet.dart';
 
 class CreateListingSheet extends ConsumerStatefulWidget {
   const new({super.key});
@@ -28,6 +35,7 @@ class _CreateListingSheetState extends ConsumerState<CreateListingSheet> {
   final _origPriceController = TextEditingController(text: '50000');
   final _discPriceController = TextEditingController(text: '25000');
   final _qtyController = TextEditingController(text: '5');
+  final _volunteerPortionsController = TextEditingController(text: '0');
 
   ListingChannel _channel = ListingChannel.discount;
   DiscountFormat _format = DiscountFormat.flashSale;
@@ -38,6 +46,22 @@ class _CreateListingSheetState extends ConsumerState<CreateListingSheet> {
   final int _safeHoursAfterPickup = 4;
   bool _hygieneConfirmed = true;
   bool _showHygieneError = false;
+  String? _selectedRecipientId;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(
+      Future.microtask(() async {
+        final notifier = ref.read(pinnedLocationNotifierProvider.notifier);
+        final state = ref.read(pinnedLocationNotifierProvider);
+        if (state.myLocation == null) await notifier.loadMyLocation();
+        if (state.verifiedRecipients.isEmpty) {
+          await notifier.loadVerifiedRecipients();
+        }
+      }),
+    );
+  }
 
   @override
   void dispose() {
@@ -46,10 +70,12 @@ class _CreateListingSheetState extends ConsumerState<CreateListingSheet> {
     _origPriceController.dispose();
     _discPriceController.dispose();
     _qtyController.dispose();
+    _volunteerPortionsController.dispose();
     super.dispose();
   }
 
   String? _validateOriginalPrice(String? raw) {
+    if (_channel == ListingChannel.donation) return null;
     final price = int.tryParse(raw?.trim() ?? '');
     if (price == null || price < 1000) {
       return 'Min. Rp 1.000';
@@ -79,6 +105,24 @@ class _CreateListingSheetState extends ConsumerState<CreateListingSheet> {
     return null;
   }
 
+  String? _validateVolunteerPortions(String? raw) {
+    final v = int.tryParse(raw?.trim() ?? '');
+    if (v == null || v < 0) return 'Min. 0';
+    final total = int.tryParse(_qtyController.text.trim()) ?? 0;
+    if (total > 0 && v > total) {
+      return 'Maks. $total porsi';
+    }
+    return null;
+  }
+
+  PinnedLocation? _resolveRecipient(List<PinnedLocation> recipients) {
+    if (recipients.isEmpty) return null;
+    for (final r in recipients) {
+      if (r.ownerId == _selectedRecipientId) return r;
+    }
+    return recipients.first;
+  }
+
   Future<void> _submit() async {
     final validForm = _formKey.currentState?.validate() ?? false;
     if (!_hygieneConfirmed) {
@@ -87,28 +131,48 @@ class _CreateListingSheetState extends ConsumerState<CreateListingSheet> {
     }
     if (!validForm) return;
 
+    final snack = ref.read(snackbarServiceProvider);
     final claims = ref.read(currentClaimsProvider);
     final partnerId = claims?.subject;
     if (partnerId == null || partnerId.trim().isEmpty) {
-      ref
-          .read(snackbarServiceProvider)
-          .showError('Sesi mitra tidak valid. Silakan masuk kembali.');
+      snack.showError('Sesi mitra tidak valid. Silakan masuk kembali.');
+      return;
+    }
+
+    final pinnedState = ref.read(pinnedLocationNotifierProvider);
+    final storeLocation = pinnedState.myLocation;
+    if (storeLocation == null) {
+      snack.showError(
+        'Titik lokasi toko tetap wajib diatur terlebih dahulu sebelum '
+        'mengunggah stok.',
+      );
+      return;
+    }
+
+    final qty = int.tryParse(_qtyController.text.trim()) ?? 0;
+    final volunteerPortions =
+        int.tryParse(_volunteerPortionsController.text.trim()) ?? 0;
+    final recipient = _resolveRecipient(pinnedState.verifiedRecipients);
+    if (volunteerPortions > 0 && recipient == null) {
+      snack.showError(
+        'Pilih panti / penerima terverifikasi tujuan untuk porsi relawan.',
+      );
       return;
     }
 
     final now = ref.read(clockProvider)().toUtc();
     final pickupStart = now.add(const Duration(minutes: 15));
     final pickupEnd = pickupStart.add(Duration(hours: _pickupDurationHours));
-
-    final origPrice = int.tryParse(_origPriceController.text.trim()) ?? 0;
+    final origPrice = _channel == ListingChannel.donation
+        ? 0
+        : (int.tryParse(_origPriceController.text.trim()) ?? 0);
     final discPrice = _channel == ListingChannel.donation
         ? 0
         : (int.tryParse(_discPriceController.text.trim()) ?? 0);
-    final qty = int.tryParse(_qtyController.text.trim()) ?? 0;
 
     final input = CreateListingInput(
       partnerId: partnerId,
-      partnerName: claims?.displayName ?? 'Mitra Surplus Share',
+      partnerName: storeLocation.placeName,
       title: _titleController.text.trim(),
       description: _descController.text.trim(),
       channel: _channel,
@@ -116,9 +180,11 @@ class _CreateListingSheetState extends ConsumerState<CreateListingSheet> {
       originalPrice: origPrice,
       discountedPrice: discPrice,
       quantity: qty,
+      volunteerAllocatedPortions: volunteerPortions,
       pickupStart: pickupStart,
       pickupEnd: pickupEnd,
-      location: ref.read(locationNotifierProvider).currentLocation,
+      location: storeLocation.point,
+      address: storeLocation.address,
       foodSafety: FoodSafetyDeclaration(
         halalStatus: _halalStatus,
         category: _category,
@@ -132,15 +198,42 @@ class _CreateListingSheetState extends ConsumerState<CreateListingSheet> {
         .read(listingNotifierProvider.notifier)
         .createListing(input);
     if (!mounted) return;
-    if (ok) {
-      ref.read(snackbarServiceProvider).showSuccess('Stok berhasil diunggah.');
-      Navigator.of(context).pop();
-    } else {
+    if (!ok) {
       final msg =
           ref.read(listingNotifierProvider).failure?.message ??
           'Gagal mengunggah stok.';
-      ref.read(snackbarServiceProvider).showError(msg);
+      snack.showError(msg);
+      return;
     }
+
+    if (volunteerPortions > 0 && recipient != null) {
+      final createdListing = ref.read(listingNotifierProvider).items.first;
+      await ref
+          .read(distributionNotifierProvider.notifier)
+          .createTask(
+            CreateDistributionInput(
+              listingId: createdListing.id,
+              listingTitle: createdListing.title,
+              partnerId: partnerId,
+              partnerName: storeLocation.placeName,
+              storeAddress: storeLocation.address,
+              storeLocation: storeLocation.point,
+              recipientId: recipient.ownerId,
+              recipientName: recipient.placeName,
+              recipientAddress: recipient.address,
+              recipientLocation: recipient.point,
+              portions: volunteerPortions,
+            ),
+          );
+      if (!mounted) return;
+    }
+
+    snack.showSuccess(
+      volunteerPortions > 0
+          ? 'Stok diunggah & $volunteerPortions porsi dikirim ke relawan.'
+          : 'Stok berhasil diunggah.',
+    );
+    Navigator.of(context).pop();
   }
 
   @override
@@ -151,6 +244,15 @@ class _CreateListingSheetState extends ConsumerState<CreateListingSheet> {
     final isLoading = ref.watch(
       listingNotifierProvider.select((s) => s.isLoading),
     );
+    final storeLocation = ref.watch(
+      pinnedLocationNotifierProvider.select((s) => s.myLocation),
+    );
+    final recipients = ref.watch(
+      pinnedLocationNotifierProvider.select((s) => s.verifiedRecipients),
+    );
+    final volunteerPortions =
+        int.tryParse(_volunteerPortionsController.text.trim()) ?? 0;
+    final selectedRecipient = _resolveRecipient(recipients);
 
     return AppBottomSheetScaffold(
       title: 'Unggah Stok Makanan Surplus',
@@ -161,6 +263,57 @@ class _CreateListingSheetState extends ConsumerState<CreateListingSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            AppSurfaceCard(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.location_pin,
+                    color: storeLocation != null
+                        ? colorScheme.primary
+                        : colorScheme.error,
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          storeLocation != null
+                              ? 'Lokasi Toko Tetap: ${storeLocation.placeName}'
+                              : 'Lokasi Toko Tetap Belum Diatur',
+                          style: textTheme.labelLarge?.copyWith(
+                            color: storeLocation != null
+                                ? colorScheme.onSurface
+                                : colorScheme.error,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          storeLocation?.address ??
+                              'Wajib tandai titik peta toko agar posisi '
+                                  'listing tidak mengikuti GPS perangkat.',
+                          style: textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    key: const Key('create_listing_pin_store_button'),
+                    onPressed: () => showAppBottomSheet<void>(
+                      context: context,
+                      builder: (_) => const PinnedLocationPickerSheet(),
+                    ),
+                    child: Text(storeLocation != null ? 'Ubah' : 'Atur Pin'),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
             SegmentedButton<ListingChannel>(
               segments: const [
                 ButtonSegment(
@@ -212,25 +365,25 @@ class _CreateListingSheetState extends ConsumerState<CreateListingSheet> {
               },
             ),
             const SizedBox(height: AppSpacing.sm),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    key: const Key('create_listing_orig_price'),
-                    controller: _origPriceController,
-                    enabled: !isLoading,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: const InputDecoration(
-                      labelText: 'Harga Asli (Rp)',
+            if (_channel == ListingChannel.discount)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      key: const Key('create_listing_orig_price'),
+                      controller: _origPriceController,
+                      enabled: !isLoading,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: const InputDecoration(
+                        labelText: 'Harga Asli (Rp)',
+                      ),
+                      onChanged: (_) => _formKey.currentState?.validate(),
+                      validator: _validateOriginalPrice,
                     ),
-                    onChanged: (_) => _formKey.currentState?.validate(),
-                    validator: _validateOriginalPrice,
                   ),
-                ),
-                const SizedBox(width: AppSpacing.md),
-                if (_channel == ListingChannel.discount)
+                  const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: TextFormField(
                       key: const Key('create_listing_disc_price'),
@@ -244,27 +397,87 @@ class _CreateListingSheetState extends ConsumerState<CreateListingSheet> {
                       validator: _validateDiscountPrice,
                     ),
                   ),
-                if (_channel == ListingChannel.discount)
                   const SizedBox(width: AppSpacing.md),
-                SizedBox(
-                  width: 84,
-                  child: TextFormField(
-                    key: const Key('create_listing_qty'),
-                    controller: _qtyController,
-                    enabled: !isLoading,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: const InputDecoration(labelText: 'Porsi'),
-                    validator: (v) {
-                      final qty = int.tryParse(v?.trim() ?? '') ?? 0;
-                      if (qty <= 0) return 'Min. 1';
-                      if (qty > 500) return 'Maks. 500';
-                      return null;
-                    },
+                  SizedBox(
+                    width: 84,
+                    child: TextFormField(
+                      key: const Key('create_listing_qty'),
+                      controller: _qtyController,
+                      enabled: !isLoading,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: const InputDecoration(labelText: 'Porsi'),
+                      onChanged: (_) => _formKey.currentState?.validate(),
+                      validator: (v) {
+                        final qty = int.tryParse(v?.trim() ?? '') ?? 0;
+                        if (qty <= 0) return 'Min. 1';
+                        if (qty > 500) return 'Maks. 500';
+                        return null;
+                      },
+                    ),
                   ),
+                ],
+              )
+            else
+              TextFormField(
+                key: const Key('create_listing_qty'),
+                controller: _qtyController,
+                enabled: !isLoading,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(
+                  labelText: 'Jumlah Porsi Donasi Gratis',
+                  helperText:
+                      'Langsung terbit sebagai Donasi Gratis tanpa perlu '
+                      'mode Flash Sale / Surprise Bag.',
                 ),
-              ],
+                onChanged: (_) => _formKey.currentState?.validate(),
+                validator: (v) {
+                  final qty = int.tryParse(v?.trim() ?? '') ?? 0;
+                  if (qty <= 0) return 'Min. 1';
+                  if (qty > 500) return 'Maks. 500';
+                  return null;
+                },
+              ),
+            const SizedBox(height: AppSpacing.sm),
+            TextFormField(
+              key: const Key('create_listing_volunteer_portions'),
+              controller: _volunteerPortionsController,
+              enabled: !isLoading,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: const InputDecoration(
+                labelText: 'Porsi untuk Relawan Distribusi (Opsional)',
+                helperText:
+                    'Diisi > 0 jika sebagian porsi diantar relawan ke panti.',
+              ),
+              onChanged: (_) => setState(() {}),
+              validator: _validateVolunteerPortions,
             ),
+            if (volunteerPortions > 0) ...[
+              const SizedBox(height: AppSpacing.xs),
+              if (recipients.isEmpty)
+                Text(
+                  'Belum ada penerima terverifikasi yang menandai titik peta.',
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colorScheme.error,
+                  ),
+                )
+              else
+                Wrap(
+                  spacing: AppSpacing.xs,
+                  runSpacing: AppSpacing.xs,
+                  children: [
+                    for (final r in recipients)
+                      ChoiceChip(
+                        label: Text(r.placeName),
+                        selected: selectedRecipient?.ownerId == r.ownerId,
+                        onSelected: (_) =>
+                            setState(() => _selectedRecipientId = r.ownerId),
+                      ),
+                  ],
+                ),
+            ],
             if (_channel == ListingChannel.discount) ...[
               const SizedBox(height: AppSpacing.md),
               Wrap(

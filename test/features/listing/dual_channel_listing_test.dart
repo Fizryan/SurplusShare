@@ -24,9 +24,6 @@ class _InMemoryTokenStorage implements TokenStorage {
   Future<String?> getAccessToken() async => _tokens?.accessToken;
 
   @override
-  Future<String?> getRefreshToken() async => _tokens?.refreshToken;
-
-  @override
   Future<AuthTokens?> getTokens() async => _tokens;
 
   @override
@@ -265,38 +262,33 @@ void main() {
       },
     );
 
-    test(
-      'non-owner partnerStaff cannot close donorPartner listing, admin can',
-      () async {
-        final container = _createContainer();
-        addTearDown(container.dispose);
+    test('volunteer cannot close donorPartner listing, admin can', () async {
+      final container = _createContainer();
+      addTearDown(container.dispose);
 
-        await container
-            .read(authNotifierProvider.notifier)
-            .signInWithGoogle(
-              debugAccountId: DummyAuthAccounts.partnerStaff.id,
-            );
-        await container.read(listingNotifierProvider.notifier).loadListings();
+      await container
+          .read(authNotifierProvider.notifier)
+          .signInWithGoogle(debugAccountId: DummyAuthAccounts.volunteer.id);
+      await container.read(listingNotifierProvider.notifier).loadListings();
 
-        final denied = await container
-            .read(listingNotifierProvider.notifier)
-            .closeListing('lst-flash-1');
-        expect(denied, isFalse);
-        expect(
-          container.read(listingNotifierProvider).failure,
-          isA<ListingPermissionDeniedFailure>(),
-        );
+      final denied = await container
+          .read(listingNotifierProvider.notifier)
+          .closeListing('lst-flash-1');
+      expect(denied, isFalse);
+      expect(
+        container.read(listingNotifierProvider).failure,
+        isA<ListingPermissionDeniedFailure>(),
+      );
 
-        // Admin can manage any partner's listing.
-        await container
-            .read(authNotifierProvider.notifier)
-            .signInWithGoogle(debugAccountId: DummyAuthAccounts.admin.id);
-        final allowed = await container
-            .read(listingNotifierProvider.notifier)
-            .closeListing('lst-flash-1');
-        expect(allowed, isTrue);
-      },
-    );
+      // Admin can manage any partner's listing.
+      await container
+          .read(authNotifierProvider.notifier)
+          .signInWithGoogle(debugAccountId: DummyAuthAccounts.admin.id);
+      final allowed = await container
+          .read(listingNotifierProvider.notifier)
+          .closeListing('lst-flash-1');
+      expect(allowed, isTrue);
+    });
 
     test(
       'auto-expires listing past pickupEnd, blocks claim/convert, and updates '
@@ -450,5 +442,72 @@ void main() {
         isA<InsufficientStockFailure>(),
       );
     });
+
+    test(
+      'partner publishes direct donation with originalPrice=0 (no flashSale) '
+      'and sees own donation in feed without self-claim; volunteer hides '
+      'unclaimable donations',
+      () async {
+        final now = DateTime.now().toUtc();
+        final container = _createContainer();
+        addTearDown(container.dispose);
+
+        await container
+            .read(authNotifierProvider.notifier)
+            .signInWithGoogle(
+              debugAccountId: DummyAuthAccounts.donorPartner.id,
+            );
+        await container.read(listingNotifierProvider.notifier).loadListings();
+
+        final ok = await container
+            .read(listingNotifierProvider.notifier)
+            .createListing(
+              CreateListingInput(
+                partnerId: DummyAuthAccounts.donorPartner.id,
+                partnerName: DummyAuthAccounts.donorPartner.displayName,
+                title: 'Donasi Langsung Nasi Kotak',
+                description: 'Langsung didonasikan tanpa flash sale',
+                channel: ListingChannel.donation,
+                originalPrice: 0,
+                discountedPrice: 0,
+                quantity: 12,
+                pickupStart: now.add(const Duration(minutes: 15)),
+                pickupEnd: now.add(const Duration(hours: 3)),
+              ),
+            );
+        expect(ok, isTrue);
+
+        // Partner sees their own donation listing in Beranda for management.
+        final partnerVisible = container.read(visibleListingsProvider);
+        final ownDonation = partnerVisible.firstWhere(
+          (item) => item.title == 'Donasi Langsung Nasi Kotak',
+        );
+        expect(ownDonation.channel, ListingChannel.donation);
+        expect(ownDonation.originalPrice, 0);
+        expect(ownDonation.discountFormat, isNull);
+
+        // Partner cannot claim/book their own listing.
+        final selfClaim = await container
+            .read(listingNotifierProvider.notifier)
+            .claimStock(listingId: ownDonation.id, quantity: 1);
+        expect(selfClaim, isFalse);
+        expect(
+          container.read(listingNotifierProvider).failure,
+          isA<ListingPermissionDeniedFailure>(),
+        );
+
+        // Volunteer cannot claim donations -> hidden from Beranda.
+        await container
+            .read(authNotifierProvider.notifier)
+            .signInWithGoogle(debugAccountId: DummyAuthAccounts.volunteer.id);
+        final volunteerVisible = container.read(visibleListingsProvider);
+        expect(
+          volunteerVisible.any(
+            (item) => item.channel == ListingChannel.donation,
+          ),
+          isFalse,
+        );
+      },
+    );
   });
 }

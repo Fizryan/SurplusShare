@@ -55,6 +55,8 @@ class RemoteListingRepository implements ListingRepository {
           'original_price': input.originalPrice,
           'discounted_price': input.discountedPrice,
           'quantity': input.quantity,
+          if (input.volunteerAllocatedPortions > 0)
+            'volunteer_allocated_portions': input.volunteerAllocatedPortions,
           'pickup_start': input.pickupStart.toUtc().toIso8601String(),
           'pickup_end': input.pickupEnd.toUtc().toIso8601String(),
           if (input.address != null && input.address!.trim().isNotEmpty)
@@ -108,6 +110,17 @@ class RemoteListingRepository implements ListingRepository {
     required String listingId,
   }) {
     return _postSingle(ApiEndpoints.closeListing(listingId));
+  }
+
+  @override
+  Future<Either<ListingFailure, SurplusListing>> allocateVolunteerPortions({
+    required String listingId,
+    required int portions,
+  }) {
+    return _postSingle(
+      ApiEndpoints.allocateListingVolunteer(listingId),
+      data: <String, dynamic>{'portions': portions},
+    );
   }
 
   Future<Either<ListingFailure, SurplusListing>> _postSingle(

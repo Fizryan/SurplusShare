@@ -6,12 +6,14 @@ class GoogleAuthCredential {
   const new({
     required this.idToken,
     required this.email,
+    this.googleId,
     this.displayName,
     this.photoUrl,
   });
 
   final String idToken;
   final String email;
+  final String? googleId;
   final String? displayName;
   final String? photoUrl;
 
@@ -21,12 +23,14 @@ class GoogleAuthCredential {
     return other is GoogleAuthCredential &&
         other.idToken == idToken &&
         other.email == email &&
+        other.googleId == googleId &&
         other.displayName == displayName &&
         other.photoUrl == photoUrl;
   }
 
   @override
-  int get hashCode => Object.hash(idToken, email, displayName, photoUrl);
+  int get hashCode =>
+      Object.hash(idToken, email, googleId, displayName, photoUrl);
 }
 
 /// Exception thrown when the user cancels interactive Google Sign-In.
@@ -89,6 +93,7 @@ class GoogleSignInClient implements GoogleAuthClient {
       return GoogleAuthCredential(
         idToken: idToken,
         email: account.email,
+        googleId: account.id,
         displayName: account.displayName,
         photoUrl: account.photoUrl,
       );

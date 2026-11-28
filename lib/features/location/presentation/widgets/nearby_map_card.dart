@@ -1,5 +1,6 @@
 import 'package:flutter_map/flutter_map.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:surplus_share/core/config/app_map_config.dart';
 import 'package:surplus_share/core/theme/app_tokens.dart';
 import 'package:surplus_share/features/location/domain/models/geo_point.dart';
 import 'package:surplus_share/features/location/domain/models/nearby_listing.dart';
@@ -72,8 +73,8 @@ class _NearbyMapCardState extends State<NearbyMapCard> {
             children: [
               if (widget.enableNetworkTiles)
                 TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.example.surplus_share',
+                  urlTemplate: AppMapConfig.tileUrlTemplate,
+                  userAgentPackageName: AppMapConfig.userAgentPackageName,
                 ),
               CircleLayer(
                 circles: [

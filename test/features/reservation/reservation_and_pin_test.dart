@@ -22,9 +22,6 @@ class _InMemoryTokenStorage implements TokenStorage {
   Future<String?> getAccessToken() async => _tokens?.accessToken;
 
   @override
-  Future<String?> getRefreshToken() async => _tokens?.refreshToken;
-
-  @override
   Future<AuthTokens?> getTokens() async => _tokens;
 
   @override
@@ -262,12 +259,10 @@ void main() {
             .bookDonation(listing: donationListing, quantity: 2);
         final wrongPin = booked!.pickupPin == '000000' ? '111111' : '000000';
 
-        // Non-owner partnerStaff is denied (isolated from other partners).
+        // Volunteer cannot validate partner handover PIN.
         await container
             .read(authNotifierProvider.notifier)
-            .signInWithGoogle(
-              debugAccountId: DummyAuthAccounts.partnerStaff.id,
-            );
+            .signInWithGoogle(debugAccountId: DummyAuthAccounts.volunteer.id);
         await container
             .read(reservationNotifierProvider.notifier)
             .loadPartnerReservations();

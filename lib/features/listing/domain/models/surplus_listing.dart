@@ -20,6 +20,7 @@ class SurplusListing {
     required this.pickupWindow,
     required this.status,
     required this.createdAt,
+    this.volunteerAllocatedPortions = 0,
     this.discountFormat,
     this.convertedToDonationAt,
     this.location,
@@ -55,6 +56,8 @@ class SurplusListing {
       discountedPrice: (json['discounted_price'] as num).toInt(),
       totalQuantity: (json['total_quantity'] as num).toInt(),
       remainingQuantity: (json['remaining_quantity'] as num).toInt(),
+      volunteerAllocatedPortions:
+          (json['volunteer_allocated_portions'] as num?)?.toInt() ?? 0,
       pickupWindow: PickupWindow.fromJson(
         Map<String, dynamic>.from(json['pickup_window'] as Map),
       ),
@@ -87,6 +90,7 @@ class SurplusListing {
   final int discountedPrice;
   final int totalQuantity;
   final int remainingQuantity;
+  final int volunteerAllocatedPortions;
   final PickupWindow pickupWindow;
   final ListingStatus status;
   final DateTime createdAt;
@@ -147,6 +151,7 @@ class SurplusListing {
     bool clearDiscountFormat = false,
     int? discountedPrice,
     int? remainingQuantity,
+    int? volunteerAllocatedPortions,
     PickupWindow? pickupWindow,
     ListingStatus? status,
     DateTime? convertedToDonationAt,
@@ -165,6 +170,8 @@ class SurplusListing {
       discountedPrice: discountedPrice ?? this.discountedPrice,
       totalQuantity: totalQuantity,
       remainingQuantity: remainingQuantity ?? this.remainingQuantity,
+      volunteerAllocatedPortions:
+          volunteerAllocatedPortions ?? this.volunteerAllocatedPortions,
       pickupWindow: pickupWindow ?? this.pickupWindow,
       status: status ?? this.status,
       createdAt: createdAt,
@@ -188,6 +195,7 @@ class SurplusListing {
     'discounted_price': discountedPrice,
     'total_quantity': totalQuantity,
     'remaining_quantity': remainingQuantity,
+    'volunteer_allocated_portions': volunteerAllocatedPortions,
     'pickup_window': pickupWindow.toJson(),
     'status': status.name,
     'created_at': createdAt.toUtc().toIso8601String(),
@@ -214,6 +222,7 @@ class SurplusListing {
         other.discountedPrice == discountedPrice &&
         other.totalQuantity == totalQuantity &&
         other.remainingQuantity == remainingQuantity &&
+        other.volunteerAllocatedPortions == volunteerAllocatedPortions &&
         other.pickupWindow == pickupWindow &&
         other.status == status &&
         other.createdAt == createdAt &&
@@ -236,6 +245,7 @@ class SurplusListing {
     discountedPrice,
     totalQuantity,
     remainingQuantity,
+    volunteerAllocatedPortions,
     pickupWindow,
     status,
     createdAt,

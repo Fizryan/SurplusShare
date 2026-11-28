@@ -1,7 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:logger/logger.dart';
 
-/// Debug-only HTTP logger that redacts Authorization headers and secrets.
+/// Debug-only HTTP logger that redacts Authorization headers, tokens, PINs,
+/// and sensitive PII from JSON and multipart payloads.
 class SanitizedLogInterceptor extends Interceptor {
   new(this._logger);
 
@@ -13,10 +14,20 @@ class SanitizedLogInterceptor extends Interceptor {
     'refresh_token',
     'accesstoken',
     'refreshtoken',
+    'session_token',
+    'sessiontoken',
     'id_token',
     'idtoken',
+    'google_id',
+    'googleid',
     'pickup_pin',
     'pickuppin',
+    'delivery_pin',
+    'deliverypin',
+    'contact_phone',
+    'contactphone',
+    'registration_number',
+    'registrationnumber',
     'pin',
     'token',
     'secret',
@@ -60,8 +71,19 @@ class SanitizedLogInterceptor extends Interceptor {
     handler.next(err);
   }
 
-  /// Recursively redacts sensitive keys from maps and lists.
+  /// Recursively redacts sensitive keys from maps, lists, and multipart data.
   static Object? sanitize(Object? value) {
+    if (value is FormData) {
+      return <String, Object?>{
+        'fields': <String, Object?>{
+          for (final entry in value.fields)
+            entry.key: _sensitiveKeys.contains(entry.key.toLowerCase())
+                ? _redacted
+                : entry.value,
+        },
+        'files': [for (final f in value.files) '${f.key}:[BINARY]'],
+      };
+    }
     if (value is Map) {
       return value.map<Object?, Object?>((key, val) {
         final keyStr = key?.toString().toLowerCase() ?? '';

@@ -1,9 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:surplus_share/core/auth/dummy/dummy_auth_repository.dart';
-import 'package:surplus_share/core/auth/models/auth_tokens.dart';
 import 'package:surplus_share/core/auth/provider/auth_provider.dart';
-import 'package:surplus_share/core/auth/storage/token_storage.dart';
 import 'package:surplus_share/core/cache/local_cache_service.dart';
 import 'package:surplus_share/core/time/clock_provider.dart';
 import 'package:surplus_share/features/impact/presentation/provider/impact_provider.dart';
@@ -13,19 +11,7 @@ import 'package:surplus_share/features/listing/presentation/provider/listing_pro
 import 'package:surplus_share/features/location/presentation/provider/location_provider.dart';
 import 'package:surplus_share/features/reservation/presentation/provider/reservation_provider.dart';
 
-class _MemStorage implements TokenStorage {
-  AuthTokens? _t;
-  @override
-  Future<void> clearTokens() async => _t = null;
-  @override
-  Future<String?> getAccessToken() async => _t?.accessToken;
-  @override
-  Future<String?> getRefreshToken() async => _t?.refreshToken;
-  @override
-  Future<AuthTokens?> getTokens() async => _t;
-  @override
-  Future<void> saveTokens(AuthTokens tokens) async => _t = tokens;
-}
+import '../../helpers/in_memory_token_storage.dart';
 
 void main() {
   test(
@@ -38,7 +24,7 @@ void main() {
           clockProvider.overrideWithValue(() => now),
           cacheStoreProvider.overrideWithValue(cache),
           authRepositoryProvider.overrideWithValue(
-            DummyAuthRepository(tokenStorage: _MemStorage()),
+            DummyAuthRepository(tokenStorage: InMemoryTokenStorage()),
           ),
         ],
       );

@@ -3,12 +3,15 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:surplus_share/app/shell/app_shell.dart';
+import 'package:surplus_share/core/auth/provider/auth_provider.dart';
 import 'package:surplus_share/core/di/global_provider.dart';
+import 'package:surplus_share/core/permission/permission_provider.dart';
 import 'package:surplus_share/core/shared/widgets/app_bottom_sheet_scaffold.dart';
 import 'package:surplus_share/core/shared/widgets/app_empty_state.dart';
 import 'package:surplus_share/core/shared/widgets/app_error_banner.dart';
 import 'package:surplus_share/core/shared/widgets/app_surface_card.dart';
 import 'package:surplus_share/core/theme/app_tokens.dart';
+import 'package:surplus_share/features/listing/domain/policy/listing_access_policy.dart';
 import 'package:surplus_share/features/listing/presentation/widgets/listing_card.dart';
 import 'package:surplus_share/features/location/domain/models/geo_point.dart';
 import 'package:surplus_share/features/location/domain/models/location_failure.dart';
@@ -111,6 +114,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       locationNotifierProvider.select((s) => s.recentNotifications.length),
     );
     final nearby = ref.watch(nearbyListingsProvider);
+    final permissions = ref.watch(currentPermissionProvider);
+    final currentUserId = ref.watch(currentUserIdProvider);
     final locNotifier = ref.read(locationNotifierProvider.notifier);
 
     return Scaffold(
@@ -299,7 +304,14 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                     onToggleFavorite: () => locNotifier.toggleFavoritePartner(
                       entry.listing.partnerId,
                     ),
-                    onAction: () => bookOrClaimListing(ref, entry.listing),
+                    onAction:
+                        ListingAccessPolicy.canClaimChannel(
+                          entry.listing,
+                          permissions,
+                          currentUserId: currentUserId,
+                        )
+                        ? () => showBookListingSheet(context, entry.listing)
+                        : null,
                   ),
                   const SizedBox(height: AppSpacing.md),
                 ],

@@ -7,6 +7,7 @@ import 'package:surplus_share/core/network/sanitized_log_interceptor.dart';
 import 'package:surplus_share/core/theme/app_tokens.dart';
 import 'package:surplus_share/core/utils/formatters/app_formatters.dart';
 import 'package:surplus_share/features/location/domain/models/geo_point.dart';
+import 'package:surplus_share/features/reservation/domain/models/payment_session.dart';
 
 void main() {
   group('SanitizedLogInterceptor.sanitize', () {
@@ -20,7 +21,11 @@ void main() {
           'access_token': 'acc-123',
           'refreshToken': 'ref-456',
           'id_token': 'google-secret-id-token',
+          'session_token': 'session-secret',
+          'google_id': 'google-sub-999',
           'pickup_pin': '123456',
+          'delivery_pin': '789012',
+          'contact_phone': '081234567890',
           'pin': '654321',
         },
       });
@@ -34,10 +39,39 @@ void main() {
           'access_token': '[REDACTED]',
           'refreshToken': '[REDACTED]',
           'id_token': '[REDACTED]',
+          'session_token': '[REDACTED]',
+          'google_id': '[REDACTED]',
           'pickup_pin': '[REDACTED]',
+          'delivery_pin': '[REDACTED]',
+          'contact_phone': '[REDACTED]',
           'pin': '[REDACTED]',
         },
       });
+    });
+  });
+
+  group('PaymentSession security', () {
+    test('rejects non-HTTPS checkout URLs in fromJson', () {
+      expect(
+        () => PaymentSession.fromJson(const {
+          'session_id': 'pay-1',
+          'checkout_url': 'http://insecure.example.com/pay',
+          'method': 'qris',
+          'amount': 20000,
+          'expires_at': '2026-11-28T12:00:00Z',
+        }),
+        throwsFormatException,
+      );
+      expect(
+        () => PaymentSession.fromJson(const {
+          'session_id': 'pay-2',
+          'checkout_url': 'javascript:alert(1)',
+          'method': 'qris',
+          'amount': 20000,
+          'expires_at': '2026-11-28T12:00:00Z',
+        }),
+        throwsFormatException,
+      );
     });
   });
 
