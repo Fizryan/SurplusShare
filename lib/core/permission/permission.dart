@@ -1,1 +1,10 @@
-enum Permission { browseDiscountListings }
+enum Permission {
+  browseDiscountListings,
+  browseDonationListings,
+  claimDonationListings,
+  createListing,
+  manageListing,
+  validatePickupPin,
+  exportCsrReport,
+  reviewKyc,
+}

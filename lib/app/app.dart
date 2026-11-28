@@ -1,40 +1,65 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:surplus_share/app/router/app_router.dart';
+import 'package:surplus_share/core/auth/models/auth_state.dart';
+import 'package:surplus_share/core/auth/provider/auth_provider.dart';
 import 'package:surplus_share/core/di/global_provider.dart';
 import 'package:surplus_share/core/theme/green/green_theme.dart';
 import 'package:surplus_share/core/theme/text_theme.dart';
 
-class MainApp extends ConsumerWidget {
+class MainApp extends ConsumerStatefulWidget {
   const new({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final themeState = ref.watch(themeNotifierProvider);
+  ConsumerState<MainApp> createState() => _MainAppState();
+}
+
+class _MainAppState extends ConsumerState<MainApp> {
+  ThemeData? _lightTheme;
+  ThemeData? _darkTheme;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(
+      Future.microtask(() {
+        if (!mounted) return;
+        if (ref.read(authNotifierProvider) is AuthInitial) {
+          unawaited(ref.read(authNotifierProvider.notifier).restoreSession());
+        }
+      }),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_lightTheme == null || _darkTheme == null) {
+      final textTheme = createTextTheme(context, 'Inter', 'Inter');
+      final green = GreenTheme(textTheme);
+      _lightTheme = green.light();
+      _darkTheme = green.dark();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final themeMode = ref.watch(
+      themeNotifierProvider.select((state) => state.mode),
+    );
     final snackbarService = ref.watch(snackbarServiceProvider);
+    final router = ref.watch(appRouterProvider);
 
-    return ScreenUtilInit(
-      designSize: const Size(393, 830),
-      minTextAdapt: true,
-      splitScreenMode: true,
-      builder: (context, child) {
-        final textTheme = createTextTheme(context, 'Inter', 'Inter');
-
-        final ThemeData lightTheme;
-        final ThemeData darkTheme;
-
-        final green = GreenTheme(textTheme);
-        lightTheme = green.light();
-        darkTheme = green.dark();
-
-        return MaterialApp.router(
-          title: 'Surplus Share',
-          scaffoldMessengerKey: snackbarService.scaffoldKey,
-          themeMode: themeState.mode,
-          theme: lightTheme,
-          darkTheme: darkTheme,
-        );
-      },
+    return MaterialApp.router(
+      title: 'Surplus Share',
+      debugShowCheckedModeBanner: false,
+      routerConfig: router,
+      scaffoldMessengerKey: snackbarService.scaffoldKey,
+      themeMode: themeMode,
+      theme: _lightTheme,
+      darkTheme: _darkTheme,
     );
   }
 }

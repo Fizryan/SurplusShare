@@ -20,5 +20,5 @@ class ThemeState {
   }
 
   @override
-  int get hashCode => mode.hashCode ^ color.hashCode;
+  int get hashCode => Object.hash(mode, color);
 }

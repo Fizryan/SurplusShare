@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:surplus_share/core/theme/app_tokens.dart';
 
 class GreenTheme {
   const new(this.textTheme);
@@ -335,17 +336,98 @@ class GreenTheme {
     return theme(darkHighContrastScheme());
   }
 
-  ThemeData theme(ColorScheme colorScheme) => ThemeData(
-    useMaterial3: true,
-    brightness: colorScheme.brightness,
-    colorScheme: colorScheme,
-    textTheme: textTheme.apply(
+  ThemeData theme(ColorScheme colorScheme) {
+    OutlineInputBorder inputBorder(Color color, {double width = 1}) {
+      return OutlineInputBorder(
+        borderRadius: AppRadius.circular(AppRadius.md),
+        borderSide: BorderSide(color: color, width: width),
+      );
+    }
+
+    final appliedTextTheme = textTheme.apply(
       bodyColor: colorScheme.onSurface,
       displayColor: colorScheme.onSurface,
-    ),
-    scaffoldBackgroundColor: colorScheme.surface,
-    canvasColor: colorScheme.surface,
-  );
+    );
+
+    return ThemeData(
+      useMaterial3: true,
+      brightness: colorScheme.brightness,
+      colorScheme: colorScheme,
+      textTheme: appliedTextTheme,
+      scaffoldBackgroundColor: colorScheme.surface,
+      canvasColor: colorScheme.surface,
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: colorScheme.surfaceContainerLow,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: 14,
+        ),
+        labelStyle: appliedTextTheme.bodyMedium?.copyWith(
+          color: colorScheme.onSurfaceVariant,
+        ),
+        floatingLabelStyle: appliedTextTheme.bodySmall?.copyWith(
+          color: colorScheme.primary,
+          fontWeight: FontWeight.w500,
+        ),
+        hintStyle: appliedTextTheme.bodyMedium?.copyWith(
+          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+        ),
+        errorStyle: appliedTextTheme.bodySmall?.copyWith(
+          color: colorScheme.error,
+        ),
+        prefixIconColor: colorScheme.onSurfaceVariant,
+        suffixIconColor: colorScheme.onSurfaceVariant,
+        border: inputBorder(colorScheme.outlineVariant),
+        enabledBorder: inputBorder(colorScheme.outlineVariant),
+        focusedBorder: inputBorder(colorScheme.primary, width: 1.5),
+        errorBorder: inputBorder(colorScheme.error),
+        focusedErrorBorder: inputBorder(colorScheme.error, width: 1.5),
+        disabledBorder: inputBorder(
+          colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: colorScheme.primary,
+          foregroundColor: colorScheme.onPrimary,
+          minimumSize: const Size.fromHeight(48),
+          shape: RoundedRectangleBorder(
+            borderRadius: AppRadius.circular(AppRadius.md),
+          ),
+          textStyle: appliedTextTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: colorScheme.primary,
+          minimumSize: const Size(0, 44),
+          side: BorderSide(color: colorScheme.outline),
+          shape: RoundedRectangleBorder(
+            borderRadius: AppRadius.circular(AppRadius.md),
+          ),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: colorScheme.primary,
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: AppSpacing.xs,
+          ),
+          minimumSize: const Size(0, 36),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          visualDensity: VisualDensity.compact,
+          textStyle: appliedTextTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
 
   List<ExtendedColor> get extendedColors => [];
 }

@@ -1,14 +1,20 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:hive_ce_flutter/adapters.dart';
+import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import 'package:logger/logger.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:surplus_share/app/app.dart';
+import 'package:surplus_share/core/config/api_config.dart';
 import 'package:surplus_share/core/config/logger_config.dart';
 import 'package:surplus_share/core/utils/constants/box_strings.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  if (!kDebugMode) {
+    const ApiConfig.fromEnvironment().validate();
+  }
 
   GoogleFonts.config.allowRuntimeFetching = true;
 
@@ -17,15 +23,18 @@ Future<void> main() async {
 
   try {
     await Hive.initFlutter();
-    await Hive.openBox<dynamic>(HiveBoxes.settingsBox);
+    await Future.wait([
+      Hive.openBox<dynamic>(HiveBoxes.settingsBox),
+      Hive.openBox<dynamic>(HiveBoxes.cacheBox),
+    ]);
 
     runApp(
       ProviderScope(
         observers: [if (kDebugMode) _RiverpodObserver(logger)],
-        child: const Scaffold(),
+        child: const MainApp(),
       ),
     );
-  } on Exception catch (e, stack) {
+  } on Object catch (e, stack) {
     logger.e(
       '[${e.runtimeType}]: Gagal inisiasi database Hive saat startup.',
       error: e,
@@ -73,7 +82,7 @@ final class _RiverpodObserver extends ProviderObserver {
     Object? previousState,
     Object? newValue,
   ) {
-    _logger.e(
+    _logger.d(
       '[_RiverpodObserver] '
       '${context.provider.name ?? context.provider.runtimeType}: '
       '$previousState -> $newValue',
@@ -83,7 +92,7 @@ final class _RiverpodObserver extends ProviderObserver {
   @override
   void didDisposeProvider(ProviderObserverContext context) {
     _logger.d(
-      '[_RiverpodObserver] '
+      '[_RiverpodObserver] disposed '
       '${context.provider.name ?? context.provider.runtimeType}',
     );
   }

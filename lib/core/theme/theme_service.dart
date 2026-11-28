@@ -9,14 +9,19 @@ class ThemeService {
   final Box<dynamic> _box;
 
   ThemeState getThemeState() {
-    final themeString = _box.get(HiveKeys.themeMode) as String?;
-    _box.get(HiveKeys.themeColor);
+    final rawMode = _box.get(HiveKeys.themeMode);
+    final themeString = rawMode is String ? rawMode : null;
+    final rawColor = _box.get(HiveKeys.themeColor);
+    final colorString = rawColor is String ? rawColor : null;
 
     var mode = ThemeMode.system;
     if (themeString == ThemeMode.light.name) mode = ThemeMode.light;
     if (themeString == ThemeMode.dark.name) mode = ThemeMode.dark;
 
-    const color = AppThemeColor.green;
+    final color = AppThemeColor.values.firstWhere(
+      (value) => value.name == colorString,
+      orElse: () => AppThemeColor.green,
+    );
 
     return ThemeState(mode: mode, color: color);
   }
